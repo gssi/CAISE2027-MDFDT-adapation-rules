@@ -1,285 +1,353 @@
-# Adaptation rules at work: examples from the model repository
+# Evolution, adaptation, and the scenarios that exercise them
 
-This note shows the rules of the modelling assistant (`evolution.ts`, `adaptation.ts`) as they were applied in recorded runs of scenario A1, then the screenshots of the walkthrough on a device.
+Two files of the engine hold what the modelling assistant can propose:
 
-Every committed version keeps the artifacts of the process that produced it, under `<model>/versions/NNNN/process/`:
+- [`src/engine/assistant/evolution.ts`](../src/engine/assistant/evolution.ts): the next version of the model of **one DT**, when its data no longer conform to its type (vertical drift, bottom-up).
+- [`src/engine/assistant/adaptation.ts`](../src/engine/assistant/adaptation.ts): the **adaptation plan**, the ranked options that bring a correspondence between DTs back (horizontal drift).
 
-| File | Process step |
-|---|---|
-| `1-change-set.yaml` | 1 · change set |
-| `2-classified-drift.wm.yaml` | 2 · classified drift |
-| `3-impact-report.wm.yaml` | 3 · impact report |
-| `4-adaptation-plan.yaml` | 4 · adaptation plan |
-| `5-decision.yaml` | the modeler decision |
+The first part of this document describes how the two work. The second part plays every scenario of [scenario-summary.xlsx](scenario-summary.xlsx) in the modeler, with a screenshot per step, and says which part of the mechanism each one exercises.
 
-The examples quote these files from two repositories: `model-repo-a1` (current run) and `model-repo-a1-archived-1` (an earlier, complete run, up to `room1` v4 and `building` v4).
+- [Where the two files sit in the process](#where-the-two-files-sit-in-the-process)
+- [evolution.ts](#evolutionts)
+- [adaptation.ts](#adaptationts)
+- [Paper scenarios](#paper-scenarios): A0, A1, A2, the variant `room2-hidden-count`, timeliness
+- [Demo walk](#demo-walk): steps 1 to 6
+- [How the screenshots were taken](#how-the-screenshots-were-taken)
 
-## The rules, in short
+## Where the two files sit in the process
 
-| Rule | Applies to | Automatic? |
+[`process.ts`](../src/engine/assistant/process.ts) runs the four steps on a *head* (the committed models) and a *candidate* (what the change would make of them):
+
+```text
+trigger ──► 1 change set ──► 2 classified drift ──► 3 impact report ──► 4 adaptation plan ──► modeler decision
+                 │                                                          │                      │
+       runtime_observation only:                                   AdaptationPlanner.plan()   resolveDecision()
+       proposeEvolution() builds                                   (RuleBasedPlanner)         applyOption() on the
+       the candidate                                                                           options of the owner
+```
+
+| Trigger | How the candidate is built | `evolution.ts` | `adaptation.ts` |
+|---|---|---|---|
+| `runtime_observation` (a DT reports) | `proposeEvolution(head, changeset)` | proposes the next version | plans on the candidate |
+| `model_edit` (the modeler edits, or a woven model has a new version) | the working copy | not used | plans on the candidate |
+| `timeliness_violation` | a copy of the head | not used | plans on the candidate |
+| change request received by a participating DT | `incomingRequests()` → `proposeForRequest()` | `migrateInstance()` | builds the proposal |
+
+Both files only build candidates and options. Nothing is committed without a modeler decision, and a decision only applies the options of the correspondences its own model owns (`resolveDecision` skips the others).
+
+## evolution.ts
+
+### `proposeEvolution(head, changeset)` → `[candidate, proposal | null]`
+
+Answers a bottom-up change: the DT reports capabilities that differ from what its model binds.
+
+1. **Record what the DT reports.** For every change at the data level, a removed or modified key is *lost* and leaves the capabilities of the DT; an added or modified key is *fresh* and enters them. This is always done.
+2. **Stop when nothing bound is lost.** If no lost key is bound to an attribute of the instance, there is no proposal: a new key alone is a capability nobody uses yet.
+3. **Next version of the type.** The O1 model is cloned with the next version number. The attribute bound to each lost key is removed; a class left with no attribute is removed too.
+4. **A class for each fresh key.** Its name is the hint `observation` of the capability, or the key in CamelCase. It is an instance of the same O2 concept as the class that was removed, and it inherits its references and properties. Its attribute takes type, unit and meaning from the capability. When the capability carries the hint `source`, the class the removed one referred to is replaced by one with that name, unless something else still uses it.
+5. **What replaced what.** Removed and added classes are paired in order (`Occupancy -> PeopleCount`), then the replaced sources (`Presence -> PeopleCounter`).
+6. **Sensors that are gone.** A sensor all of whose bound keys are lost is removed, with its class when no other sensor of that kind is left.
+7. **The instance follows**, with `migrateInstance` (below).
+8. **Parts of a device.** A fresh key provided by a part that is attached and not in the model (`capability.part`) adds the part as a sensor and an observation for every parameter it senses. Observations left without data are paired with the new ones, sensors that are gone with the parts that came (`MotionDetectorV2 -> Nfc`), and references to a replaced class are re-pointed.
+9. **The trace.** `linkVersions` writes the evolution weaving model (`ev-<type>-<from>-<to>`): one link for the version, one per replaced class, one per class that is kept. The planner follows this trace to find the successor of an element another DT depends on.
+
+The result is an `EvolutionProposal` (`package`, `instance`, `fromVersion`, `toVersion`, `replaces`), shown in the app as *Proposed evolution: room1 v1 → v2 (Occupancy -> PeopleCount, Presence -> PeopleCounter)*.
+
+### `migrateInstance(fed, instance, targetKey)`
+
+Retypes an O0 model to a version of its type, in place.
+
+- An object whose class survives is kept, without the bindings and slots the class no longer has.
+- A class without an object gets one, named in snake_case. If its concept requires a source of data, every attribute is bound to a capability of the DT with the same type and unit, and the same meaning when both declare one: the key of the same name, or else the only one that fits. If none fits, `EvolutionError`.
+- A mandatory reference whose target is gone is re-pointed when exactly one object of the right class exists; otherwise it is left open, for the gate to point out and the modeler to settle.
+
+There is no value coercion anywhere in this: a key backs an attribute only if type, unit and meaning agree.
+
+## adaptation.ts
+
+### The plan as data
+
+An `AdaptationPlan` has one `Resolution` per drifted correspondence (`drift`, `owner`, `element`, `correspondence`), each with ranked `Option`s, and the `interim` behaviour of what is affected until the plan is committed. An option is data: `kind`, `params`, `automatic`, and the `changes` it would make. `applyOption` turns it into model changes, so a plan can be stored, inspected and applied later.
+
+| Kind | What `applyOption` does | When it is proposed |
 |---|---|---|
-| **No adaptation** | a change that keeps conformance and every correspondence | nothing to do |
-| **Evolution** | data of a DT no longer conform to its type: next version of the type, instance migrated | automatic; the gate may ask the modeler to review it |
-| **Retarget** (`adapt`) | the participating element changed version but still agrees in meaning, type and unit | automatic |
-| **Derive** | a mapping between the two meanings is admitted by the derivation catalogue and type-checks | automatic |
-| **Bind** (`adapt`) | a missing correspondence, and the participating DT already models the element | automatic |
-| **Adapt the initiating DT** | always offered for a broken correspondence: new type version, dependents revised | semi-automatic: needs the modeler |
-| **Change request** | no automatic option survives verification | committed as *pending* |
+| `adapt` (automatic) | re-targets the correspondence to another participating element, without a mapping | the element that can provide the value has the same meaning, type and unit |
+| `derive` | re-targets and writes a `mapping` in the correspondence | the meanings differ and `core` admits a derivation between them whose result has the expected type |
+| `adapt` · *needs the modeler* | nothing: `applyOption` refuses it | always, for a broken correspondence: the initiating DT consumes the new element itself, with a new type version and its dependents revised |
+| `change_request` | marks the correspondence `pending`, with the request and the interim behaviours | no automatic option is left |
 
-Every automatic option is verified by applying it to the candidate model. It enters the plan only if its correspondence then holds and no other correspondence breaks. Options are ranked from the least to the most invasive and named `a`, `b`, …. Each option and each plan belongs to the model that owns what it changes: correspondences belong to the initiating DT.
+Re-targeting (`retarget`) sets the participating end, rewrites what the correspondence expects (type version, type, unit, meaning) from the new element, sets or removes the mapping and clears `status`, `changeRequest` and `interim`.
 
----
+### `RuleBasedPlanner.plan(context)`
 
-## Example 1 · A non-breaking change: no adaptation
+For every horizontal drift of the classified drift:
 
-**Where:** `model-repo-a1/room1/versions/0002` (and the same pattern in `room2/versions/0002`).
+1. **Generate.**
+   - Status *broken* → `deriveBroken`: the successor of the participating element is found through the evolution trace (`successorElement`), then `derivation` compares it with the initiating element. Same meaning, type and unit: `adapt`. Different meanings: the rule `from → to` of the derivations of `core` is looked up, its expression is typed on the source, and if the result has the expected type the option is `derive`, with `value` renamed to the attribute (`value > 0` becomes `count > 0`). The non-automatic `adapt` is always added, listing the dependents the modeler would revise.
+   - Status *missing* → `provide`: every attribute of every object of the participating DT is tried with the same `derivation`.
+2. **Verify.** Each automatic proposal is applied to the candidate and the correspondences are checked again: the option is kept only if its own correspondence then holds (or is pending) and no correspondence that was settled breaks. The diff becomes `option.changes`.
+3. **Fall back.** If no automatic option is kept, a `change_request` is added: *restore … as expected by …* for a broken correspondence, *model the observation key … that the DT already provides* or *new data source in …* for a missing one, depending on what the DT reports (`providingKey`).
+4. **Rank.** Options are lettered `a`, `b`, … in that order: from the least to the most invasive.
 
-**Change.** A model edit in Room 1 adds the physical device and its sensor: a `TinkerforgeDevice` and a `MotionDetectorV2` at O1 and O0. The observation `occupancy.occupied` is now bound to the key `motion_detected` instead of `occupied`. The new attribute keeps type `EBoolean` and meaning `occupancy`.
+After that, every correspondence that is already `pending` is tried again with `provide`: a change request is closed as soon as the participating DT models what was asked for.
 
-```yaml
-# 1-change-set.yaml (excerpt)
-trigger: model_edit
-origin: { dt: Room 1, model: room1@1, level: O1 }
-changes:
-  - kind: modified
-    level: O0
-    element: room1#occupancy.bindings.occupied
-    before: occupied
-    after: motion_detected
-  - { kind: added, level: O1, element: room1@1#MotionDetectorV2, ... }
-```
+`interim` comes from the impact report: each *dependency* entry gives an element and its behaviour (`exclude input`, `suspend`) until the plan is committed. A change request carries the interim behaviours of what it reaches in the impact graph.
 
-**Drift and impact.** Nothing breaks: the model still conforms, and the correspondence check compares type, unit and meaning, which are unchanged.
+### The other side of a change request
 
-```yaml
-# 2-classified-drift.wm.yaml
-holding: [c-r1-occupancy, c-r2-occupancy]
-links: []
-# 3-impact-report.wm.yaml
-affectedDTs: []
-unaffectedDTs: [Room 2, Building, Room 1]
-```
+`incomingRequests(fed, model)` lists the requests other DTs have open on a model. When the DT already reports data that fit and its type has no attribute for them, `proposeForRequest` builds the next version: the class that models those data in another DT is copied, with the classes it refers to, and `migrateInstance` instantiates it on the reported key.
 
-**Plan and decision.** The plan has no resolutions and no interim behaviour. The modeler of Room 1 accepts, and no other DT is involved.
+### What each scenario exercises
 
-```yaml
-resolutions: []
-interim: []
-# 5-decision.yaml
-decision: accept
-choices: {}
-```
-
-**Why it matters.** A DT can change its own model, here to add how its data are physically sensed, without anyone else being asked. Drift is about meaning, type, unit and version, not about how a value is produced.
+| Scenario | `evolution.ts` | `adaptation.ts` |
+|---|---|---|
+| A1 · Room 1 | `proposeEvolution`: steps 1 to 7 and 9 | `deriveBroken` → `derive`, `adapt` (modeler) |
+| A1 · Building | – | `deriveBroken`, `applyOption(derive)` |
+| A1 on a device | `proposeEvolution` with parts (step 8) | as A1 |
+| A2 · Building | – | `provide` finds nothing → `change_request` |
+| A2 · variant | `migrateInstance` | `proposeForRequest`; `provide` on the pending request → `adapt` |
+| Timeliness | – | `deriveBroken` finds no successor → `change_request` |
+| Demo 4, 5a | `proposeEvolution` (4 with parts) | `deriveBroken` → `derive`, `adapt` (modeler) |
+| Demo 4a, 4b, 5b | – | from the room: `change_request` (no successor: the element is still there) |
+| Demo 6 | – | `deriveBroken` → `derive` on the same element, `applyOption(derive)` twice |
 
 ---
 
-## Example 2 · A breaking change seen from the participating DT: change request
+## Paper scenarios
 
-**Where:** `model-repo-a1/room1/versions/0003`.
+The scenarios of [`init/SPEC.md`](../init/SPEC.md) section 6, on the models of [`scenarios/building`](../scenarios/building): two participating DTs (`room1`, `room2`), one initiating DT (`building`), the shared concepts in `core`. In the screenshots the diagram is on the left and the *Process* tab on the right, with the four steps and the modeler decision.
 
-**Change.** Room 1 replaces motion detection with an NFC people counter. `Occupancy.occupied` keeps its name but becomes an `EInt` with meaning `people-count` and unit `person`, bound to the `count` of the new `Nfc` sensor. Two reactions on the occupancy are added.
+### A0 · Baseline
 
-**Drift.** The correspondence that Building owns breaks. The reasons are recorded one by one, and the last one is the no-coercion rule:
+Version 1 of every model. `building` weaves `room1` and `room2` through `c-r1-occupancy` and `c-r2-occupancy`: both sides mean *occupancy*, as a Boolean, and both correspondences hold. There is nothing to process.
 
-```yaml
-- id: hd-1
-  type: HorizontalDrift
-  status: broken
-  correspondence: c-r1-occupancy
-  initiating: building#occupancy_r1.occupied
-  participating: room1#occupancy.occupied
-  reasons:
-    - expects room1@1, but room1 conforms to room1@2
-    - expects eType EBoolean, but room1#occupancy.occupied has EInt
-    - expects meaning occupancy, but room1#occupancy.occupied has people-count
-    - room1#occupancy.occupied provides EInt, building#occupancy_r1.occupied needs EBoolean, and there is no mapping
-    - unit 'person' does not match the expected unit None
-    - "meaning 'people-count' differs from 'occupancy': no value coercion across meanings"
-```
+![A0: building at version 1](img/scenarios/a0-building.png)
 
-**Impact.** The impact report has two entries:
+### A1 · A participating DT evolves (Room 1)
 
-- the element of Building is reached through the correspondence, with severity *high*;
-- the lighting and ventilation policy is reached through a dependency inside Building, with severity *medium*.
+**Do.** `room1` → *Runtime* → *Report from a DT* → `building/a1/observations.yaml` → **Send to the modeling layer**.
 
-Room 2 is listed as not affected.
+Room 1 now reports `count` (EInt, person, people-count) and no longer `occupied`. Nobody edited a model.
 
-```yaml
-- { source: room1#occupancy.occupied, target: building#occupancy_r1.occupied,
-    category: correspondence, severity: high, via: c-r1-occupancy }
-- { source: building#occupancy_r1, target: building#policy,
-    category: dependency, severity: medium, interim: exclude_input }
-```
+![A1: the proposal for room1](img/scenarios/a1-room1-proposal.png)
 
-**Plan.** In Room 1's process the plan for `c-r1-occupancy` contains only the fallback, a change request addressed to the owner of the correspondence. The interim behaviour of the policy comes with it.
+| Step | Result |
+|---|---|
+| Change set | `runtime_observation`, origin Room 1, level data: `occupied` removed, `count` added. |
+| Classified drift | Vertical, bottom-up, twice: the bound key is no longer provided; no element accounts for the new key. Horizontal, broken, `c-r1-occupancy`: the participating element no longer exists. |
+| Impact report | `room1#occupancy.occupied`: conformance, high. `building#occupancy_r1.occupied`: correspondence, high. `building#policy`: dependency, medium (reduced scope). |
+| Adaptation plan | For `building` to decide: (a) derive `occupied = count > 0`; (b) adapt Building to consume the count. Interim: `building#policy` excludes the input. |
 
-```yaml
-resolutions:
-  - correspondence: c-r1-occupancy
-    options:
-      - id: a
-        kind: change_request
-        description: "change request: restore room1#occupancy.occupied as expected by
-          building#occupancy_r1.occupied: ...; affected elements keep their interim
-          behaviour in the meantime"
-interim:
-  - { element: building#policy, behaviour: exclude_input,
-      because: building#occupancy_r1, until: the plan is committed }
-```
+<img src="img/scenarios/a1-room1-process.png" width="440" alt="A1: the Process tab of room1">
 
-**Decision.** The modeler of Room 1 accepts the new version of Room 1, and `choices` is empty. The plan for Building is information for Room 1, not something Room 1 can apply, so Building's model is not touched by this commit. Building is now in drift, and it is Building's turn (Example 3).
+**Mechanism.** `proposeEvolution` loses the bound key `occupied`, removes `Occupancy`, adds `PeopleCount` (hint `observation`) with the source `PeopleCounter` (hint `source`), migrates the instance and writes the trace `Occupancy -> PeopleCount`, `Presence -> PeopleCounter`. The planner follows that trace from `room1#occupancy.occupied` to `room1#people_count.count`; the meanings differ, `core` admits `people-count → occupancy` as `value > 0`, so the first option is `derive`. The correspondence belongs to `building`: Room 1 sees the plan and cannot decide it.
 
-```yaml
-decision: accept
-choices: {}
-```
+*Changes* shows what accepting would commit, as a model diff:
 
----
+<img src="img/scenarios/a1-room1-changes.png" width="440" alt="A1: the Munidiff of room1 version 2">
 
-## Example 3 · The initiating DT follows: derive (automatic) or adapt (needs the modeler)
+**Outcome.** Room 1 accepts: `room1` version 2. Building is then in drift.
 
-**Where:** `model-repo-a1/building/versions/0002`.
+### A1 · The initiating DT follows (Building)
 
-**Change.** For Building the change arrives as a new version of a model it weaves (`origin: Room 1, room1@3, level O1`). The drift is the same broken correspondence as in Example 2. This time it is planned in the model that owns it.
+**Do.** Open `building`: it carries the mark *drift*, and *Process* opens on *A model this one weaves has a new version*.
 
-**Plan.** The planner produces two ranked options:
+![A1: building finds the drift](img/scenarios/a1-building-drift.png)
 
-```yaml
-- id: a
-  rank: 1
-  kind: derive
-  automatic: true
-  description: derive occupied = occupied > 0 from room1#occupancy.occupied, as a mapping in c-r1-occupancy
-  changes:                      # the diff obtained by applying the option (verification)
-    - { element: building-weaving#c-r1-occupancy.expects.typeVersion, before: room1@1, after: room1@3 }
-    - { element: building-weaving#c-r1-occupancy.expects.eType,       before: EBoolean, after: EInt }
-    - { element: building-weaving#c-r1-occupancy.expects.meaning,     before: occupancy, after: people-count }
-    - { element: building-weaving#c-r1-occupancy.expects.unit,        after: person }
-    - { element: building-weaving#c-r1-occupancy.mapping,             after: occupied > 0 }
-- id: b
-  rank: 2
-  kind: adapt
-  automatic: false
-  description: "adapt Building to consume room1#occupancy.occupied (EInt, person) in place of
-    building#occupancy_r1.occupied: a new type version, and building#policy revised by the modeler"
-  params: { revise: [building#policy] }
-  changes: []
-```
+The same horizontal drift, now in the model that owns the correspondence: the options have a radio button, and (a) is selected.
 
-**Which rules produced it.**
+**Outcome.** Building accepts (a): `building` version 2. `applyOption` re-targets `c-r1-occupancy` to `room1#people_count.count` and writes the mapping `count > 0` in it. Both correspondences hold; `room1` is not touched.
 
-- **Derive.** The shared concepts declare one derivation, `people-count → occupancy: value > 0`. The planner renames `value` to the source attribute (here still called `occupied`, now a count), checks that the expression yields `EBoolean`, and applies it. The listed `changes` are the result of that application. The correspondence now expects what Room 1 really provides and carries the mapping that turns it into what Building needs.
-- **Adapt.** Option (b) is always offered when the participating element has changed. It is not automatic, because it requires rewriting `building#policy`, so its `changes` are empty: the modeler writes them.
-- **No reverse derivation.** The catalogue has no rule from `occupancy` to `people-count`. That is why, in scenario A2, the same planner can never answer a missing count with `occupied = true → count = 1`.
+![A1: building at version 2, with the mapping on the correspondence](img/scenarios/a1-building-v2.png)
 
-**Decision.** The modeler of Building chooses (a) for drift `hd-1`:
+### A1 on a device (Room 1)
 
-```yaml
-decision: accept
-choices: { hd-1: a }
-```
+The same scenario played on hardware, where the lost key and the new one come from parts of a physical device: see [a1-on-device.md](a1-on-device.md), with its own 16 screenshots.
 
-The policy stops excluding Room 1's input. Room 2 was never involved.
+### A2 · The initiating DT evolves (Building)
 
-In the earlier run (`model-repo-a1-archived-1/building/versions/0004`) the same rule is applied twice in one decision, after both rooms had moved to a people count: `choices: { hd-1: a, hd-2: a }`.
+**Do.** `building` → **Apply building/a2**.
 
----
+Building now needs the number of people in each room: a new class `RoomCount`, the indicator `TotalPeople`, the goal `SafetyGoal`, and two correspondences, `c-r1-count` and `c-r2-count`.
 
-## Example 4 · Retarget: only the version changed
+![A2: the edit of building](img/scenarios/a2-building-edit.png)
 
-**Where:** `model-repo-a1-archived-1/building/versions/0003`.
+| Step | Result |
+|---|---|
+| Change set | `model_edit`, origin Building, level O1. |
+| Classified drift | Vertical, top-down, Building: `RoomCount.count` is required by the type, but no data provide it for Room 2. Horizontal, missing, `c-r2-count`: no element of `room2` corresponds. |
+| Impact report | `building#count_r2.count`: conformance, high; correspondence, high. `building#total`, `building#safety`: dependency, medium (reduced scope). |
+| Adaptation plan | `c-r2-count`: (a) change request, a new data source in `room2`. Interim: `building#total` and `building#safety` exclude the input. |
 
-Room 2 moved to `room2@2`, adding a simulated device and a second presence sensor. Its occupancy kept type, unit and meaning, so the correspondence breaks for a single reason:
+<img src="img/scenarios/a2-building-process.png" width="440" alt="A2: the Process tab of building">
 
-```yaml
-reasons:
-  - expects room2@1, but room2 conforms to room2@2
-```
+**Mechanism.** `c-r1-count` raises nothing: Room 1 already models a count. For `c-r2-count` the status is *missing*, so the planner runs `provide`: no attribute of `room2` has the meaning *people-count* or one from which it can be derived (a count tells whether a room is occupied, never the opposite). No automatic option is left, and the plan falls back to a change request.
 
-The first option is the least invasive one, an automatic retarget: point the correspondence to the element in the new version, with no mapping. Adapt remains as option (b).
+**Outcome.** Building accepts: `building` version 3. `c-r1-count` holds, `c-r2-count` is pending.
 
-```yaml
-- { id: a, kind: adapt, automatic: true,  description: retarget c-r2-occupancy to room2#occupancy.occupied }
-- { id: b, kind: adapt, automatic: false, description: "adapt Building to consume room2#occupancy.occupied (EBoolean) ..." }
-# 5-decision.yaml
-choices: { hd-1: a }
-```
+![A2: building at version 3, c-r2-count pending](img/scenarios/a2-building-v3.png)
 
-The drift is real but trivial: only the expected type version differs (`typeVersion: room2@1`), and the planner resolves it without a mapping.
+`room2` carries the mark *request*. Its DT reports nothing that fits, so there is no proposal: the new data source is for its modeler to model.
+
+![A2: the request as room2 sees it](img/scenarios/a2-room2-request.png)
+
+### A2 · Variant `room2-hidden-count` (Room 2, then Building)
+
+The same scenario started from **Start from building (room2-hidden-count)**: the DT of Room 2 already reports a `count`, which its model does not use. The change request then reads *model the observation key 'count' that room2 already provides*.
+
+![Variant: the request, with a proposal](img/scenarios/a2v-room2-request.png)
+
+**Do.** `room2` → *Process* → **See the version the assistant proposes**.
+
+![Variant: the proposed version of room2](img/scenarios/a2v-room2-proposal.png)
+
+**Mechanism.** `proposeForRequest` finds that the DT has a capability for what Building needs (`providingKey`), copies `PeopleCount` and `PeopleCounter` from the current type of `room1`, and `migrateInstance` binds the new object to the key `count`. No drift: nothing Room 2 offered has changed.
+
+<img src="img/scenarios/a2v-room2-changes.png" width="440" alt="Variant: the Munidiff of room2 version 2">
+
+**Outcome.** Room 2 accepts: `room2` version 2. In `building`, the pending correspondence is tried again with `provide`, which now finds `room2#people_count.count` with the same meaning, type and unit: the option is `adapt`, without a mapping.
+
+<img src="img/scenarios/a2v-building-bind-process.png" width="440" alt="Variant: building binds the count of room2">
+
+Building accepts: `building` version 4, all four correspondences hold.
+
+![Variant: building at version 4](img/scenarios/a2v-building-v4.png)
+
+### Timeliness
+
+Played after the variant. `c-r2-occupancy` and `c-r2-count` expect observations no older than 60 s.
+
+**Do.** *Runtime*: Room 2 emits `occupied = true`, `count = 1` at t = 20; Room 1 emits `count = 3` at t = 100; set the current time to 110 and press **Check timeliness**.
+
+![Timeliness: the violation in building](img/scenarios/timeliness-building.png)
+
+| Step | Result |
+|---|---|
+| Change set | `timeliness_violation`, origin Room 2, level data. |
+| Classified drift | No vertical drift. Horizontal, broken, `c-r2-occupancy` and `c-r2-count`: observed 90 s ago, maximum age is 60 s. |
+| Impact report | Both elements of Building: correspondence, high. `building#policy`, `building#total`, `building#safety`: dependency, medium (reduced scope). |
+| Adaptation plan | On each correspondence: (a) change request, restore the element as expected. Interim: the three dependents exclude the input. |
+
+<img src="img/scenarios/timeliness-process.png" width="440" alt="Timeliness: the Process tab of building">
+
+**Mechanism.** No model changed, so the evolution trace has no successor for the elements of Room 2 and `deriveBroken` proposes nothing: a late value cannot be derived from anything in the models. Only the change request is left.
+
+**Outcome.** Building accepts: `building` version 5, both correspondences pending, Room 2 not changed. The runtime, regenerated from the models, evaluates the policy, the total and the goal on a reduced scope.
+
+<img src="img/scenarios/timeliness-runtime-pending.png" width="440" alt="Timeliness: the projection with the pending correspondences">
 
 ---
 
-## Screenshots: scenario A1 on a device
+## Demo walk
 
-The screenshots are in `docs/img/a1-on-device/` and illustrate the walkthrough in `docs/a1-on-device.md`, played against a working copy of the model repository (`model-repo-a1`) on real Tinkerforge hardware. In that run Room 1 moves from v3 to v4 and Building to v4. The version numbers therefore differ from those recorded in the current `model-repo-a1`, which was reset and played again.
+The walk of [`scenarios/building/demo-README.md`](../scenarios/building/demo-README.md), from version 1 of every model to a federation that has drifted and been brought back. What each step produces is tabulated in [demo-walk.md](demo-walk.md); here are the screens. The edits are local files (`scenarios/building/demo-*`), not in the repository, because they describe a device on a private network: host and UIDs in the screenshots are those of that device. *Live* was off: nothing was read from it.
 
-Paths below are relative to a file in `Claude outputs/`.
+### Steps 1, 2, 3 · A room changes how it senses
 
-### Before the change
+**Do.** `room1` → **Apply building/demo-1-room1-motion**, accept; **Apply building/demo-2-room1-leds**, accept. `room2` → **Apply building/demo-3-room2-presence**, accept.
 
-**Step 0 · The starting point.** The model of Room 1 on three lanes: types (O1), instances (O0) and data. The element of Building that depends on it through `c-r1-occupancy` is shown dotted.
+Room 1 gets a device, a motion detector that feeds the occupancy, and two reactions that drive its indicators. Room 2 gets a simulated presence sensor.
 
-![room1 before the change](../docs/img/a1-on-device/00-start.png)
+![Steps 1 and 2: room1 at version 3](img/demo-walk/2-room1-v3.png)
 
-**Step 1 · The model is live.** Readings from the device appear on the model and, through the correspondence, on Building.
+![Step 3: the edit of room2, no drift](img/demo-walk/3-room2-presence.png)
 
-![live readings on the model](../docs/img/a1-on-device/01-live.png)
+No drift, no impact, no plan: what Building uses is still there, with the same type and meaning. A new version of a participating DT is not drift in itself.
 
-### The physical change (trigger)
+### Step 4 · From the data (optional)
 
-**Step 2 · The motion detector goes away.** `motion_detected` gives no data.
+**Do.** `room1` → *Runtime* → `building/demo-4-room1-from-data/observations.yaml` → **Send to the modeling layer**.
 
-![the motion detector treated as detached](../docs/img/a1-on-device/02-detached.png)
+The motion detector no longer answers and an NFC part is attached.
 
-**Step 3 · What is attached now.** The NFC Bricklet is found on the brick and reported as a new source of data.
+![Step 4: the proposal for room1](img/demo-walk/4-room1-from-data.png)
 
-![the attached parts, with the NFC reader ticked](../docs/img/a1-on-device/03-attached.png)
+<img src="img/demo-walk/4-room1-from-data-process.png" width="440" alt="Step 4: the Process tab of room1">
 
-### The process in Room 1
+**Mechanism.** `proposeEvolution` with a part: the sensor whose only key is lost goes away with its class, the NFC part and an observation of what it senses come in (`Occupancy -> PeopleCount`, `MotionDetectorV2 -> Nfc`), and the references of the reactions are re-pointed to what replaced their targets. The plan for Building is the one of A1: derive, or adapt.
 
-**Step 4 · Change set (step 1).** Trigger `runtime_observation`, origin Room 1, level data: `motion_detected` removed, `count` added.
+The proposal does not pass its checks: the reactions it carried over read `occupied`, which `people_count` does not have, and call `set_indicator`, which the NFC part does not offer. The gate points that out for the modeler.
 
-![change set and classified drift](../docs/img/a1-on-device/04-change-set-drift.png)
+<img src="img/demo-walk/4-room1-from-data-checks.png" width="440" alt="Step 4: the gate of room1">
 
-**Step 5 · Classified drift (step 2) and the evolution proposal.** Two bottom-up vertical drifts and the broken horizontal drift on `c-r1-occupancy`. The proposed evolution room1 v3 → v4 is shown as a dashed proposal (Occupancy → PeopleCount, MotionDetectorV2 → Nfc).
+**Outcome.** Reject: `room1` stays at version 3.
 
-![the proposal in the diagram](../docs/img/a1-on-device/05-proposal.jpg)
+### Step 4a · The type alone
 
-**Step 6 · Impact report (step 3) and adaptation plan (step 4).** Room 2 is not affected. The options (a) derive and (b) adapt are shown without a choice, because the correspondence belongs to Building. Interim behaviour: the reaction is suspended and the policy excludes the input.
+**Do.** `room1` → **Apply building/demo-4a-room1-type**. Do not save.
 
-![impact report and adaptation plan](../docs/img/a1-on-device/06-impact-plan.png)
+`Occupancy.occupied` becomes `EInt`, `person`, `people-count`; the instance is as it was.
 
-### The modeler of Room 1
+![Step 4a: vertical drift, top-down](img/demo-walk/4a-room1-type.png)
 
-**Step 7 · The gate.** The proposal cannot be accepted yet: the condition of the reaction refers to `occupied`, which no longer exists.
+<img src="img/demo-walk/4a-room1-type-process.png" width="440" alt="Step 4a: the Process tab of room1">
 
-![the gate holds the proposal](../docs/img/a1-on-device/07-gate.png)
+**Mechanism.** A model edit: `evolution.ts` is not involved. The drift is vertical, top-down (the key provides a Boolean, the type expects an Integer) and horizontal on `c-r1-occupancy`. The element Building depends on is still there under the same name, so there is no successor to follow and, seen from Room 1, the plan is only a change request: *restore `room1#occupancy.occupied` as expected*.
 
-The modeler rewrites the condition (`count > 0`). This is the semi-automatic part of the evolution.
+<img src="img/demo-walk/4a-room1-type-checks.png" width="440" alt="Step 4a: the gate of room1">
 
-![the reaction re-pointed by the modeler](../docs/img/a1-on-device/08-reaction.png)
+**Outcome.** The model does not pass its checks: it cannot be committed.
 
-**Step 8 · Diff and commit of room1 v4.** The Munidiff of the version, the acceptance, and the result. Building now carries the *drift* mark.
+### Step 4b · The instance follows
 
-![the Munidiff of version 4](../docs/img/a1-on-device/09-changes.png)
+**Do.** Still in `room1`: **Apply building/demo-4b-room1-instance**, accept.
 
-![accepting the version](../docs/img/a1-on-device/10-accept.png)
+An NFC part feeds `occupancy.occupied`, and the reactions are revised (`occupied > 0`, `occupied == 0`).
 
-![room1 at version 4](../docs/img/a1-on-device/11-room1-v4.png)
+![Step 4b: only the horizontal drift is left](img/demo-walk/4b-room1-instance.png)
 
-### The modeler of Building
+<img src="img/demo-walk/4b-room1-instance-process.png" width="440" alt="Step 4b: the Process tab of room1">
 
-**Step 9 · Building finds the drift.** Origin Room 1 at level O1, broken horizontal drift on `c-r1-occupancy`.
+The vertical drift is gone and the gate is green. The horizontal one stays: type, unit and meaning no longer match, and there is *no value coercion across meanings*.
 
-![building finds the drift](../docs/img/a1-on-device/12-building-drift.png)
+**Outcome.** `room1` version 4. Building is in drift on `c-r1-occupancy`.
 
-The plan, now with a choice: (a) derive `occupied = count > 0`, (b) adapt, which needs the modeler.
+### Step 5a · The data change
 
-![the adaptation plan of building](../docs/img/a1-on-device/13-building-plan.png)
+**Do.** `room2` → *Runtime* → `building/demo-5-room2-count/observations.yaml` → **Send to the modeling layer**.
 
-The diff of option (a) touches one element, the correspondence. After acceptance Building is at v4 and the drift mark is gone.
+![Step 5a: the proposal for room2](img/demo-walk/5a-room2-data.png)
 
-![the Munidiff of building version 4](../docs/img/a1-on-device/14-building-changes.png)
+<img src="img/demo-walk/5a-room2-data-process.png" width="440" alt="Step 5a: the Process tab of room2">
 
-![building at version 4](../docs/img/a1-on-device/15-building-v4.png)
+**Mechanism.** `proposeEvolution` without hints: the class is named after the key (`Occupancy -> Count`). For `c-r2-occupancy` the trace gives a successor, so the plan offers derive and adapt. `c-r1-occupancy`, broken since step 4b, is listed too, with its change request: the classified drift shows every correspondence that does not hold.
+
+**Outcome.** Reject: step 5b keeps the name `occupied`. `room2` stays at version 2.
+
+### Step 5b · The model follows
+
+**Do.** `room2` → **Apply building/demo-5-room2-count**, accept.
+
+![Step 5b: room2 edited by its modeler](img/demo-walk/5b-room2-model.png)
+
+<img src="img/demo-walk/5b-room2-model-process.png" width="440" alt="Step 5b: the Process tab of room2">
+
+**Outcome.** `room2` version 3. Building is in drift on both correspondences.
+
+### Step 6 · Building decides
+
+**Do.** Open `building`. Keep **(a) derive** on both correspondences, accept.
+
+![Step 6: building finds both correspondences broken](img/demo-walk/6-building-decides.png)
+
+<img src="img/demo-walk/6-building-decides-process.png" width="440" alt="Step 6: the Process tab of building">
+
+**Mechanism.** The same drift that was only a change request when seen from the rooms. From Building, the head is still verified against `room1@1` and `room2@1`, and the evolution traces lead from the old `Occupancy` to the new one: `successorElement` returns the element of the same name, `derivation` finds the meanings differ and the rule of `core` applies, and the option is `derive occupied = occupied > 0`, as a mapping in each correspondence.
+
+**Outcome.** Building accepts (a): `building` version 2. Both correspondences hold, each with its mapping; the rooms are not touched.
+
+![Step 6: building at version 2](img/demo-walk/6-building-v2.png)
+
+---
+
+## How the screenshots were taken
+
+On 2026-11-14, at commit `748fa19`, by driving the modeler in a headless browser against three fresh model repositories (`FMDDT_REPO` set to an empty folder, then *Start from building*):
+
+1. the scenario as shipped: A0, A1, A2;
+2. the variant `room2-hidden-count`: A1 and A2 again, then Room 2, the binding and timeliness;
+3. the demo walk, steps 1 to 6.
+
+Wide images are the whole window; narrow ones are the tab on the right alone, at its full height and with the *Elements* of the change set unfolded. The path of the repository in the top bar is hidden. Nothing else was altered.
+
+The texts of the engine in the tables are shortened. The screenshots and [scenario-summary.xlsx](scenario-summary.xlsx) have them in full.
