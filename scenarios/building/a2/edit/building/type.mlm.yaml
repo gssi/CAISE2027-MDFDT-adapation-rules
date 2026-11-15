@@ -1,0 +1,43 @@
+# A2: Building adds the number of people per room, the total for the building
+# and a safety goal on it.
+level: O1
+ePackage: building
+typedBy: core
+eClasses:
+  Building:
+    instanceOf: Entity
+    eReferences:
+      rooms: { eType: Room, lowerBound: 1, upperBound: -1, containment: true }
+  Room:
+    instanceOf: Entity
+  RoomOccupancy:
+    instanceOf: Observation
+    eAttributes:
+      occupied: { eType: EBoolean, meaning: occupancy }
+    eReferences:
+      source: { eType: Room, lowerBound: 1 }
+  LightingVentilationPolicy:
+    instanceOf: Rule
+    onDrift: exclude_input
+    eReferences:
+      inputs: { eType: RoomOccupancy, lowerBound: 1, upperBound: -1 }
+  RoomCount:
+    instanceOf: Observation
+    eAttributes:
+      count: { eType: EInt, unit: person, meaning: people-count }
+    eReferences:
+      source: { eType: Room, lowerBound: 1 }
+  TotalPeople:
+    instanceOf: Indicator
+    onDrift: exclude_input
+    eAttributes:
+      total: { eType: EInt, unit: person }
+    eReferences:
+      inputs: { eType: RoomCount, lowerBound: 1, upperBound: -1 }
+  SafetyGoal:
+    instanceOf: Goal
+    onDrift: exclude_input
+    eAttributes:
+      maxPeople: { eType: EInt, unit: person }
+    eReferences:
+      indicator: { eType: TotalPeople, lowerBound: 1 }

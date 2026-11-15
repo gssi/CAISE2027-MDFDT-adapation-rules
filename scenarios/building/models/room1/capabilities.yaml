@@ -1,0 +1,2 @@
+# Observation keys the DT can provide, including those the model does not use.
+occupied: { eType: EBoolean, meaning: occupancy }

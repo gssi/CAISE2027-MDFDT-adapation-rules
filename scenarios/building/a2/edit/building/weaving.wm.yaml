@@ -1,0 +1,17 @@
+# Building now expects a people count from every room. Room 1 has one since
+# its second version; for Room 2 the modeler can only name the DT.
+wModel: building-weaving
+woven: [room1, room2]
+links:
+  - id: c-r1-count
+    type: Correspondence
+    initiating: building#count_r1.count
+    participating: room1#people_count.count
+    expects: { typeVersion: room1@2, eType: EInt, unit: person, meaning: people-count }
+    timeliness: { maxAge: 60, syncTolerance: 10 }
+  - id: c-r2-count
+    type: Correspondence
+    initiating: building#count_r2.count
+    participating: room2
+    expects: { eType: EInt, unit: person, meaning: people-count }
+    timeliness: { maxAge: 60, syncTolerance: 10 }

@@ -1,0 +1,26 @@
+# Room 2 describes how its occupancy is sensed: a device reached through a
+# connector, and a presence sensor on it whose parameter `detected` provides the
+# observation key `occupied`. The connector is the simulated one, so this can be
+# tried without hardware; with a Raspberry Pi it would be `tinkerforge`.
+level: O1
+ePackage: room2
+typedBy: core
+eClasses:
+  SimulatedDevice:
+    instanceOf: Device
+    eAttributes:
+      connector: EString
+  Presence:
+    instanceOf: Sensor
+    eAttributes:
+      kind: EString
+      value: EString
+      detected: { eType: EBoolean, meaning: occupancy }
+    eReferences:
+      device: { eType: SimulatedDevice, lowerBound: 1 }
+  Occupancy:
+    instanceOf: Observation
+    eAttributes:
+      occupied: { eType: EBoolean, meaning: occupancy }
+    eReferences:
+      source: { eType: Presence, lowerBound: 1 }

@@ -1,0 +1,11 @@
+level: O0
+name: room1
+dt: Room 1
+typedBy: room1@1
+objects:
+  presence:
+    instanceOf: Presence
+  occupancy:
+    instanceOf: Occupancy
+    bindings: { occupied: occupied }
+    source: presence

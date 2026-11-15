@@ -1,0 +1,12 @@
+# A1: Room 1 replaces the presence sensor with a people counter.
+# It now reports count: Integer instead of occupied: Boolean.
+source: room1
+capabilities:
+  count:
+    eType: EInt
+    unit: person
+    meaning: people-count
+    observation: PeopleCount # how the DT names the measurement
+    source: PeopleCounter # and the device that provides it
+observations:
+  - { key: count, value: 3, timestamp: 100 }

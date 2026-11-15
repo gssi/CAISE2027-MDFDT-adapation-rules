@@ -1,0 +1,115 @@
+--- building/versions/0002
++++ building/versions/0003
+@@ @@
++building.RoomCount:EClass {
++    instanceOf --> core.Observation:EClass
++    eAttributes *-->  [
++        building.RoomCount.count:EAttribute
++    ]
++    eReferences *-->  [
++        building.RoomCount.source:EReference
++    ]
++}
+@@ @@
++building.RoomCount.count:EAttribute {
++    eType: EInt
++    unit: person
++    meaning: people-count
++}
+@@ @@
++building.RoomCount.source:EReference {
++    eType --> building.Room:EClass
++    lowerBound: 1
++    upperBound: 1
++}
+@@ @@
++building.TotalPeople:EClass {
++    instanceOf --> core.Indicator:EClass
++    onDrift: exclude_input
++    eAttributes *-->  [
++        building.TotalPeople.total:EAttribute
++    ]
++    eReferences *-->  [
++        building.TotalPeople.inputs:EReference
++    ]
++}
+@@ @@
++building.TotalPeople.total:EAttribute {
++    eType: EInt
++    unit: person
++}
+@@ @@
++building.TotalPeople.inputs:EReference {
++    eType --> building.RoomCount:EClass
++    lowerBound: 1
++    upperBound: -1
++}
+@@ @@
++building.SafetyGoal:EClass {
++    instanceOf --> core.Goal:EClass
++    onDrift: exclude_input
++    eAttributes *-->  [
++        building.SafetyGoal.maxPeople:EAttribute
++    ]
++    eReferences *-->  [
++        building.SafetyGoal.indicator:EReference
++    ]
++}
+@@ @@
++building.SafetyGoal.maxPeople:EAttribute {
++    eType: EInt
++    unit: person
++}
+@@ @@
++building.SafetyGoal.indicator:EReference {
++    eType --> building.TotalPeople:EClass
++    lowerBound: 1
++    upperBound: 1
++}
+@@ @@
++building.count_r1:RoomCount {
++    source --> building.room_1:Room
++}
+@@ @@
++building.count_r2:RoomCount {
++    source --> building.room_2:Room
++}
+@@ @@
++building.total:TotalPeople {
++    inputs -->  [
++        building.count_r1:RoomCount
++        building.count_r2:RoomCount
++    ]
++}
+@@ @@
++building.safety:SafetyGoal {
++    indicator --> building.total:TotalPeople
++    maxPeople: 50
++}
+@@ @@
++building.c-r1-count:Correspondence {
++    initiating --> building.count_r1.count:EAttribute
++    participating --> room1.people_count.count:EAttribute
++    expects.typeVersion: room1@2
++    expects.eType: EInt
++    expects.unit: person
++    expects.meaning: people-count
++    timeliness.maxAge: 60
++    timeliness.syncTolerance: 10
++}
+@@ @@
++building.c-r2-count:Correspondence {
++    initiating --> building.count_r2.count:EAttribute
++    participating --> room2
++    expects.eType: EInt
++    expects.unit: person
++    expects.meaning: people-count
++    timeliness.maxAge: 60
++    timeliness.syncTolerance: 10
++    status: pending
++    changeRequest: model the observation key 'count' that room2 already provides, for building#count_r2.count (people-count, EInt, person)
++    interim:  [
++        building#total: exclude_input
++        building#safety: exclude_input
++    ]
++}

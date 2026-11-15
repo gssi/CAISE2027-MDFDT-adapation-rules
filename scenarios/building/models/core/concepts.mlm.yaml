@@ -1,0 +1,20 @@
+# O2: generic concepts, shared by every DT and independent of any domain.
+#   requiresSource  instances need a value source: runtime data or another DT
+#   dependent       instances are evaluated from other elements
+#   device          instances are physical devices, reached through a connector
+#   sensor          instances are sensors on a device: what they sense provides data
+#   actuator        instances are parts of a device that only act
+#   reaction        instances invoke an operation when a condition on what they observe becomes true
+# What a sensor or an actuator can be asked to do are the operations of its class.
+level: O2
+ePackage: core
+eClasses:
+  Entity: {}
+  Observation: { requiresSource: true }
+  Indicator: { dependent: true }
+  Goal: { dependent: true }
+  Rule: { dependent: true }
+  Device: { device: true }
+  Sensor: { sensor: true }
+  Actuator: { actuator: true }
+  Reaction: { dependent: true, reaction: true }

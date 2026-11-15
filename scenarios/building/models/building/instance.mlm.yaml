@@ -1,0 +1,21 @@
+level: O0
+name: building
+dt: Building
+typedBy: building@1
+objects:
+  building:
+    instanceOf: Building
+    rooms: [room_1, room_2]
+  room_1:
+    instanceOf: Room
+  room_2:
+    instanceOf: Room
+  occupancy_r1:
+    instanceOf: RoomOccupancy
+    source: room_1
+  occupancy_r2:
+    instanceOf: RoomOccupancy
+    source: room_2
+  policy:
+    instanceOf: LightingVentilationPolicy
+    inputs: [occupancy_r1, occupancy_r2]

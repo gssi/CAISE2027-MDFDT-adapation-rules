@@ -1,0 +1,14 @@
+--- building/versions/0003
++++ building/versions/0004
+@@ @@
+ building.c-r2-count:Correspondence {
++    participating --> room2.people_count.count:EAttribute
+-    participating --> room2
+-    status: pending
+-    changeRequest: model the observation key 'count' that room2 already provides, for building#count_r2.count (people-count, EInt, person)
+     interim:  [
+-        building#total: exclude_input
+-        building#safety: exclude_input
+     ]
++    expects.typeVersion: room2@2
+ }

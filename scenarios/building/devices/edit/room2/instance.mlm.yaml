@@ -1,0 +1,17 @@
+level: O0
+name: room2
+dt: Room 2
+objects:
+  hub:
+    instanceOf: SimulatedDevice
+    connector: simulated
+  presence:
+    instanceOf: Presence
+    kind: presence
+    value: "true"
+    device: hub
+    bindings: { detected: occupied }
+  occupancy:
+    instanceOf: Occupancy
+    bindings: { occupied: occupied }
+    source: presence

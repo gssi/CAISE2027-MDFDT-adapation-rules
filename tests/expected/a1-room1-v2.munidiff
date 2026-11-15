@@ -1,0 +1,86 @@
+--- room1/versions/0001
++++ room1/versions/0002
+@@ @@
+-room1.Presence:EClass {
+-    instanceOf --> core.Entity:EClass
+-}
+@@ @@
+-room1.Occupancy:EClass {
+-    instanceOf --> core.Observation:EClass
+-    eAttributes *-->  [
+-        room1.Occupancy.occupied:EAttribute
+-    ]
+-    eReferences *-->  [
+-        room1.Occupancy.source:EReference
+-    ]
+-}
+@@ @@
+-room1.Occupancy.occupied:EAttribute {
+-    eType: EBoolean
+-    meaning: occupancy
+-}
+@@ @@
+-room1.Occupancy.source:EReference {
+-    eType --> room1.Presence:EClass
+-    lowerBound: 1
+-    upperBound: 1
+-}
+@@ @@
+-room1.presence:Presence {
+-}
+@@ @@
+-room1.occupancy:Occupancy {
+-    bindings:  [
+-        occupied <- occupied
+-    ]
+-    source --> room1.presence:Presence
+-}
+@@ @@
+-room1.data.occupied:Capability {
+-    eType: EBoolean
+-    meaning: occupancy
+-}
+@@ @@
++room1.PeopleCount:EClass {
++    instanceOf --> core.Observation:EClass
++    eAttributes *-->  [
++        room1.PeopleCount.count:EAttribute
++    ]
++    eReferences *-->  [
++        room1.PeopleCount.source:EReference
++    ]
++}
+@@ @@
++room1.PeopleCount.count:EAttribute {
++    eType: EInt
++    unit: person
++    meaning: people-count
++}
+@@ @@
++room1.PeopleCount.source:EReference {
++    eType --> room1.PeopleCounter:EClass
++    lowerBound: 1
++    upperBound: 1
++}
+@@ @@
++room1.PeopleCounter:EClass {
++    instanceOf --> core.Entity:EClass
++}
+@@ @@
++room1.people_count:PeopleCount {
++    bindings:  [
++        count <- count
++    ]
++    source --> room1.people_counter:PeopleCounter
++}
+@@ @@
++room1.people_counter:PeopleCounter {
++}
+@@ @@
++room1.data.count:Capability {
++    eType: EInt
++    unit: person
++    meaning: people-count
++    observation: PeopleCount
++    source: PeopleCounter
++}

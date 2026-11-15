@@ -1,0 +1,38 @@
+--- room2/versions/0001
++++ room2/versions/0002
+@@ @@
++room2.PeopleCount:EClass {
++    instanceOf --> core.Observation:EClass
++    eAttributes *-->  [
++        room2.PeopleCount.count:EAttribute
++    ]
++    eReferences *-->  [
++        room2.PeopleCount.source:EReference
++    ]
++}
+@@ @@
++room2.PeopleCount.count:EAttribute {
++    eType: EInt
++    unit: person
++    meaning: people-count
++}
+@@ @@
++room2.PeopleCount.source:EReference {
++    eType --> room2.PeopleCounter:EClass
++    lowerBound: 1
++    upperBound: 1
++}
+@@ @@
++room2.PeopleCounter:EClass {
++    instanceOf --> core.Entity:EClass
++}
+@@ @@
++room2.people_count:PeopleCount {
++    bindings:  [
++        count <- count
++    ]
++    source --> room2.people_counter:PeopleCounter
++}
+@@ @@
++room2.people_counter:PeopleCounter {
++}

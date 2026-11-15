@@ -1,0 +1,24 @@
+# The type of the Building DT, version 1: a building is made of rooms, and a
+# policy uses the occupancy of the rooms.
+level: O1
+ePackage: building
+version: 1
+typedBy: core
+eClasses:
+  Building:
+    instanceOf: Entity
+    eReferences:
+      rooms: { eType: Room, lowerBound: 1, upperBound: -1, containment: true }
+  Room:
+    instanceOf: Entity
+  RoomOccupancy:
+    instanceOf: Observation
+    eAttributes:
+      occupied: { eType: EBoolean, meaning: occupancy }
+    eReferences:
+      source: { eType: Room, lowerBound: 1 }
+  LightingVentilationPolicy:
+    instanceOf: Rule
+    onDrift: exclude_input
+    eReferences:
+      inputs: { eType: RoomOccupancy, lowerBound: 1, upperBound: -1 }

@@ -1,0 +1,5 @@
+# Admitted derivations between meanings. A derivation may only lose
+# information: a count tells whether a room is occupied, never the opposite.
+- from: people-count
+  to: occupancy
+  expression: value > 0

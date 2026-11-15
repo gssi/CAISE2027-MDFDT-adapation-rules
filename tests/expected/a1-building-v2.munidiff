@@ -1,0 +1,15 @@
+--- building/versions/0001
++++ building/versions/0002
+@@ @@
+ building.c-r1-occupancy:Correspondence {
++    participating --> room1.people_count.count:EAttribute
+-    participating --> room1.occupancy.occupied
++    expects.typeVersion: room1@2
+-    expects.typeVersion: room1@1
++    expects.eType: EInt
+-    expects.eType: EBoolean
++    expects.meaning: people-count
+-    expects.meaning: occupancy
++    expects.unit: person
++    mapping: count > 0
+ }

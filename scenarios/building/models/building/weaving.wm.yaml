@@ -1,0 +1,27 @@
+# Building is an initiating DT: its weaving model states what it expects from
+# the rooms (participating DTs), element by element, and which DT is the twin
+# of each room it is made of.
+wModel: building-weaving
+typedBy: weaving
+woven: [room1, room2]
+links:
+  - id: r-room1
+    type: Representation
+    entity: building#room_1
+    dt: room1
+  - id: r-room2
+    type: Representation
+    entity: building#room_2
+    dt: room2
+  - id: c-r1-occupancy
+    type: Correspondence
+    initiating: building#occupancy_r1.occupied
+    participating: room1#occupancy.occupied
+    expects: { typeVersion: room1@1, eType: EBoolean, meaning: occupancy, accuracy: 0.95 }
+    timeliness: { maxAge: 60, syncTolerance: 10 }
+  - id: c-r2-occupancy
+    type: Correspondence
+    initiating: building#occupancy_r2.occupied
+    participating: room2#occupancy.occupied
+    expects: { typeVersion: room2@1, eType: EBoolean, meaning: occupancy, accuracy: 0.95 }
+    timeliness: { maxAge: 60, syncTolerance: 10 }

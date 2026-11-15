@@ -1,0 +1,3 @@
+# Variant: Room 2 can already count people, although its model does not use it.
+occupied: { eType: EBoolean, meaning: occupancy }
+count: { eType: EInt, unit: person, meaning: people-count }

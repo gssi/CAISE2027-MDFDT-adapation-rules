@@ -1,0 +1,14 @@
+# The type of the Room 2 DT, version 1: a presence sensor measures the occupancy.
+level: O1
+ePackage: room2
+version: 1
+typedBy: core
+eClasses:
+  Presence:
+    instanceOf: Entity
+  Occupancy:
+    instanceOf: Observation
+    eAttributes:
+      occupied: { eType: EBoolean, meaning: occupancy }
+    eReferences:
+      source: { eType: Presence, lowerBound: 1 }
