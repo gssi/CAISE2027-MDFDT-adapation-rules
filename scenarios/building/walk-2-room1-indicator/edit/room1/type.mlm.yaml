@@ -1,0 +1,90 @@
+# Walk step 2: two reactions switch an indicator light on and off.
+level: O1
+ePackage: room1
+typedBy: core
+eClasses:
+  Presence:
+    instanceOf: Entity
+  Occupancy:
+    instanceOf: Observation
+    eAttributes:
+      occupied:
+        eType: EBoolean
+        meaning: occupancy
+    eReferences:
+      source:
+        eType: Presence
+        lowerBound: 1
+  SimulatedDevice:
+    instanceOf: Device
+    eAttributes:
+      connector:
+        eType: EString
+  PresenceSensor:
+    instanceOf: Sensor
+    eAttributes:
+      kind:
+        eType: EString
+      uid:
+        eType: EString
+      value:
+        eType: EString
+      detected:
+        eType: EBoolean
+        meaning: occupancy
+    eReferences:
+      device:
+        eType: SimulatedDevice
+        lowerBound: 1
+  Switch:
+    instanceOf: Sensor
+    eAttributes:
+      kind:
+        eType: EString
+      uid:
+        eType: EString
+      on:
+        eType: EBoolean
+        meaning: switch-state
+    eReferences:
+      device:
+        eType: SimulatedDevice
+        lowerBound: 1
+    eOperations:
+      set:
+        description: Turn it on or off.
+        eParameters:
+          on:
+            eType: EBoolean
+  OccupiedSet:
+    instanceOf: Reaction
+    eAttributes:
+      when:
+        eType: EString
+      operation:
+        eType: EString
+      on:
+        eType: EBoolean
+    eReferences:
+      input:
+        eType: Occupancy
+        lowerBound: 1
+      target:
+        eType: Switch
+        lowerBound: 1
+  OccupiedSet2:
+    instanceOf: Reaction
+    eAttributes:
+      when:
+        eType: EString
+      operation:
+        eType: EString
+      on:
+        eType: EBoolean
+    eReferences:
+      input:
+        eType: Occupancy
+        lowerBound: 1
+      target:
+        eType: Switch
+        lowerBound: 1

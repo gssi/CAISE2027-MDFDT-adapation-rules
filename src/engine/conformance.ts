@@ -12,6 +12,8 @@ import {
   targets,
   valueConforms,
   modelKey,
+  type EClass,
+  type EReference,
   type Model,
 } from "./kernel/model";
 import { ref } from "./kernel/refs";
@@ -26,7 +28,69 @@ export function issueText(issue: Issue): string {
   return `[${issue.check}] ${issue.element}: ${issue.message}`;
 }
 
-function checkTypes(fed: Federation, model: Model, issues: Issue[]): void {
+/** Whether the concepts state relations: only then are the references of the DT types held to them. */
+const relates = (meta: Model) => Object.values(meta.eClasses).some((c) => Object.keys(c.eReferences).length > 0);
+
+/** Whether a reference of a type is an instance of a relation between concepts. */
+function admits(relation: EReference, reference: EReference, target: string | null): boolean {
+  return (
+    relation.eType === target &&
+    relation.containment === reference.containment &&
+    (relation.upperBound === -1 || (reference.upperBound !== -1 && reference.upperBound <= relation.upperBound))
+  );
+}
+
+/** The shared concepts: a relation leads to a concept of the same model. */
+function checkConcepts(model: Model, issues: Issue[]): void {
+  for (const concept of Object.values(model.eClasses)) {
+    for (const relation of Object.values(concept.eReferences)) {
+      if (relation.eType in model.eClasses) continue;
+      issues.push({
+        check: "O2",
+        element: ref(modelKey(model), concept.name, relation.name),
+        message: `the relation leads to ${repr(relation.eType)}, which is not a concept of ${modelKey(model)}`,
+      });
+    }
+  }
+}
+
+/**
+ * The references of a class against the relations of its concept: every
+ * reference is an instance of a relation between the concepts of its two ends,
+ * and a relation that asks for at least one target has such a reference.
+ */
+function checkRelations(model: Model, meta: Model, eclass: EClass, add: (element: string, message: string) => void): void {
+  const concept = meta.eClasses[eclass.instanceOf ?? ""];
+  if (!concept || !relates(meta)) return;
+  const key = modelKey(model);
+  const used = new Set<string>();
+  for (const reference of Object.values(eclass.eReferences)) {
+    const target = model.eClasses[reference.eType]?.instanceOf ?? null;
+    if (target === null || !(target in meta.eClasses)) continue; // reported where the target class is checked
+    const relations = Object.values(concept.eReferences).filter((r) => admits(r, reference, target));
+    relations.forEach((r) => used.add(r.name));
+    if (relations.length) continue;
+    const between = Object.values(concept.eReferences).filter((r) => r.eType === target);
+    add(
+      ref(key, eclass.name, reference.name),
+      between.length
+        ? `${a(concept.name)} relates to ${a(target)} as ${between.map((r) => `${r.name} (${relationText(r)})`).join(", ")}, not as ${relationText(reference)}`
+        : `no relation of ${modelKey(meta)} leads from ${concept.name} to ${target}`,
+    );
+  }
+  for (const relation of Object.values(concept.eReferences)) {
+    if (relation.lowerBound < 1 || used.has(relation.name)) continue;
+    add(ref(key, eclass.name), `${a(concept.name)} needs a reference to ${a(relation.eType)} (${relation.name})`);
+  }
+}
+
+/** A name with its article. */
+const a = (name: string) => `${/^[aeiou]/i.test(name) ? "an" : "a"} ${name}`;
+
+const relationText = (r: EReference) =>
+  `${r.containment ? "containment" : "reference"}, ${r.upperBound === -1 ? "many" : `at most ${r.upperBound}`}`;
+
+function checkTypes(fed: Federation, model: Model, issues: Issue[], current: boolean): void {
   const key = modelKey(model);
   const add = (element: string, message: string) => issues.push({ check: "O1->O2", element, message });
   const meta = fed.models[model.typedBy ?? ""];
@@ -37,9 +101,12 @@ function checkTypes(fed: Federation, model: Model, issues: Issue[]): void {
   if (!Number.isInteger(model.version)) add(key, "an O1 type must carry a version");
   for (const eclass of Object.values(model.eClasses)) {
     const where = ref(key, eclass.name);
-    if (!(eclass.instanceOf !== null && eclass.instanceOf in meta.eClasses)) {
+    // The concepts have one current version: an earlier version of a type was checked against
+    // the concepts of its time, and is not held to those of today.
+    if (current && !(eclass.instanceOf !== null && eclass.instanceOf in meta.eClasses)) {
       add(where, `instanceOf ${repr(eclass.instanceOf)} is not in ${modelKey(meta)}`);
     }
+    if (current) checkRelations(model, meta, eclass, add);
     for (const attribute of Object.values(eclass.eAttributes)) {
       if (!PRIMITIVES.includes(attribute.eType)) {
         add(ref(key, eclass.name, attribute.name), "unknown eType");
@@ -147,9 +214,11 @@ function checkInstances(fed: Federation, model: Model, issues: Issue[]): void {
 
 export function checkConformance(fed: Federation): Issue[] {
   const issues: Issue[] = [];
+  const inUse = new Set(Object.values(fed.models).map((m) => (m.level === "O0" ? m.typedBy : null)));
   for (const model of Object.values(fed.models)) {
-    if (model.level === "O1") checkTypes(fed, model, issues);
+    if (model.level === "O1") checkTypes(fed, model, issues, inUse.has(modelKey(model)));
     else if (model.level === "O0") checkInstances(fed, model, issues);
+    else checkConcepts(model, issues);
   }
   return issues;
 }

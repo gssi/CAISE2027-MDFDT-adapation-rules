@@ -10,6 +10,7 @@ import { type Issue } from "@/engine/conformance";
 import { type DeviceSpec, type Discovered, type Reading } from "@/engine/devices";
 import { type FileMap } from "@/engine/federation";
 import { type Dict } from "@/engine/kernel/model";
+import { addDT } from "@/engine/modeling/models";
 import { type ModelVersion } from "@/engine/modelset";
 
 import { discoverDevice, invokeOperation, readDevice } from "./connectors";
@@ -183,6 +184,22 @@ export async function restoreVersion(model: string, version: number): Promise<Ou
   try {
     if (!repo.models().includes(model)) return { ok: false, error: `unknown model ${model}` };
     repo.restore(model, version);
+    repo.writeProjection();
+    return { ok: true, version, state: stateOf(repo) };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/** The first version of the model of a new DT: empty, for its modeler to fill. */
+export async function createModel(id: string, label: string): Promise<Outcome> {
+  const repo = new Repository(repoPath());
+  try {
+    if (!repo.isRepository()) return { ok: false, error: "the repository has no models yet" };
+    const candidate = repo.federation();
+    const problem = addDT(candidate, id, label);
+    if (problem) return { ok: false, error: problem };
+    const version = repo.commit(id, candidate, "initial model");
     repo.writeProjection();
     return { ok: true, version, state: stateOf(repo) };
   } catch (error) {

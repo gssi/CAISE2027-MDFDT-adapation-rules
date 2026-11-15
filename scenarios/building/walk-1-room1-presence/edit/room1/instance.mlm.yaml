@@ -1,0 +1,23 @@
+# Walk step 1: a simulated device and its presence sensor feed the occupancy of Room 1.
+level: O0
+name: room1
+dt: Room 1
+objects:
+  presence:
+    instanceOf: Presence
+  occupancy:
+    instanceOf: Occupancy
+    bindings:
+      occupied: detected
+    source: presence
+  simulated_device:
+    instanceOf: SimulatedDevice
+    connector: simulated
+  presence2:
+    instanceOf: PresenceSensor
+    bindings:
+      detected: detected
+    kind: presence
+    device: simulated_device
+    uid: presence
+    value: "true"

@@ -1,0 +1,31 @@
+# Walk step 5b: the model follows the data. A simulated people counter feeds occupied.
+level: O0
+name: room2
+dt: Room 2
+objects:
+  presence:
+    instanceOf: Presence
+  occupancy:
+    instanceOf: Occupancy
+    bindings:
+      occupied: count
+    source: presence
+  simulated_device:
+    instanceOf: SimulatedDevice
+    connector: simulated
+  presence2:
+    instanceOf: PresenceSensor
+    bindings:
+      detected: detected
+    kind: presence
+    device: simulated_device
+    uid: presence
+    value: "true"
+  people_counter:
+    instanceOf: PeopleCounter
+    bindings:
+      count: count
+    kind: people_counter
+    device: simulated_device
+    uid: people_counter
+    value: "3"

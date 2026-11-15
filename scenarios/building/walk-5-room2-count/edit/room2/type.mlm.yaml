@@ -1,0 +1,56 @@
+# Walk step 5b: the model follows the data. A simulated people counter feeds occupied.
+level: O1
+ePackage: room2
+typedBy: core
+eClasses:
+  Presence:
+    instanceOf: Entity
+  Occupancy:
+    instanceOf: Observation
+    eAttributes:
+      occupied:
+        eType: EInt
+        unit: person
+        meaning: people-count
+    eReferences:
+      source:
+        eType: Presence
+        lowerBound: 1
+  SimulatedDevice:
+    instanceOf: Device
+    eAttributes:
+      connector:
+        eType: EString
+  PresenceSensor:
+    instanceOf: Sensor
+    eAttributes:
+      kind:
+        eType: EString
+      uid:
+        eType: EString
+      value:
+        eType: EString
+      detected:
+        eType: EBoolean
+        meaning: occupancy
+    eReferences:
+      device:
+        eType: SimulatedDevice
+        lowerBound: 1
+  PeopleCounter:
+    instanceOf: Sensor
+    eAttributes:
+      kind:
+        eType: EString
+      uid:
+        eType: EString
+      value:
+        eType: EString
+      count:
+        eType: EInt
+        unit: person
+        meaning: people-count
+    eReferences:
+      device:
+        eType: SimulatedDevice
+        lowerBound: 1

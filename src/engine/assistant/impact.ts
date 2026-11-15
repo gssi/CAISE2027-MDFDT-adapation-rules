@@ -128,7 +128,25 @@ export function assess(head: Federation, candidate: Federation, drift: WModel): 
         severity: "high",
         reason: `${lower} does not satisfy ${upper}`,
       });
-      if (lowerRef.path.length) follow(candidate, ownerOf(lower), report);
+      const type = candidate.models[lowerRef.model];
+      if (type?.level === "O1") {
+        // a class that lost its concept: every object of that class, and what depends on it
+        for (const instance of instances(candidate)) {
+          if (instance.typedBy !== lowerRef.model) continue;
+          for (const obj of Object.values(instance.objects)) {
+            if (obj.instanceOf !== lowerRef.path[0]) continue;
+            const target = ref(instance.name, obj.name);
+            report.add(lower, target, {
+              direction: "vertical",
+              scope: "intra-dt",
+              category: "conformance",
+              severity: "high",
+              reason: `${target} is a ${obj.instanceOf}, which no longer follows the shared concepts`,
+            });
+            follow(candidate, target, report);
+          }
+        }
+      } else if (lowerRef.path.length) follow(candidate, ownerOf(lower), report);
     }
   }
 

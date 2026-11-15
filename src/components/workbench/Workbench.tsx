@@ -31,7 +31,6 @@ import {
   gateFor,
   modelOf,
   transplant,
-  wovenBy,
   type ModelVersion,
 } from "@/engine/modelset";
 import { munidiff } from "@/engine/munidiff";
@@ -39,9 +38,11 @@ import { liveValues, type LiveValue } from "@/engine/runtime/live";
 import { actorOf, fire, reactionsOf } from "@/engine/runtime/reactions";
 import { HOLDS, checkCorrespondences } from "@/engine/weaving/checks";
 import { wmodelFromDict } from "@/engine/weaving/model";
+import { modelProblem } from "@/engine/modeling/models";
 import {
   archiveLegacy,
   decide,
+  createModel,
   getExamples,
   getState,
   getVersion,
@@ -74,11 +75,14 @@ const LAYER: Record<EdgeKind, string> = {
   impact: "impact",
 };
 
+/** What the button in the title of a container adds, by the level of its model. */
+const ADDS: Record<string, string | undefined> = { O2: "Add a concept", O1: "Add a class", O0: "Add an object" };
+
 const CAUSE: Record<Trigger["kind"], string> = {
   edit: "You edited this model: this is what your working copy changes.",
   observations: "The DT of this model reported at runtime.",
   timeliness: "The runtime observed a timeliness violation on what this model expects.",
-  incoming: "A model this one weaves has a new version since this model was committed.",
+  incoming: "A model this one weaves, or the shared concepts, has a new version since this model was committed.",
   request: "Another DT asked for this; the assistant proposes the next version of this model.",
 };
 
@@ -230,6 +234,7 @@ export function Workbench() {
   const [kinds, setKinds] = useState<Set<EdgeKind>>(() => new Set(EDGE_KINDS.filter((k) => k !== "typing")));
   const [tab, setTab] = useState("properties");
   const [busy, setBusy] = useState(false);
+  const [creating, setCreating] = useState<{ id: string; label: string } | null>(null);
   const [error, setError] = useState<{ message: string; issues?: Issue[] } | null>(null);
   const [yamlFile, setYamlFile] = useState("");
   const [restoring, setRestoring] = useState("");
@@ -313,7 +318,7 @@ export function Workbench() {
     const out: Record<string, { drift: boolean; requests: number }> = {};
     if (!headFed) return out;
     for (const model of models) {
-      const drift = wovenBy(headFed, model).length > 0 && incomingDrift(versions, model) !== null;
+      const drift = incomingDrift(versions, model) !== null;
       out[model] = { drift, requests: incomingRequests(headFed, model).length };
     }
     return out;
@@ -394,14 +399,18 @@ export function Workbench() {
     // ran at its commit is in the Process tab.
     const overlay = viewing === "working" ? processView : null;
     const readings = viewing === "working" ? values : null;
-    return buildGraph(
+    const graph = buildGraph(
       shown,
       before,
       kinds,
       { statuses, drift: overlay?.drift, impact: overlay?.impact, values: readings },
       { focus },
     );
-  }, [shown, before, kinds, statuses, viewing, processView, focus, values]);
+    if (readOnly) return graph;
+    // What the open model owns can be added to from its title.
+    const action = (id: string) => (id in shown.models ? ADDS[shown.models[id].level] : undefined);
+    return { ...graph, containers: graph.containers.map((c) => (c.proxy ? c : { ...c, action: action(c.id) })) };
+  }, [shown, before, kinds, statuses, viewing, processView, focus, values, readOnly]);
   // by names that do not change with the version, so an arrangement outlives a commit
   const arranged = useMemo(() => (spec ? fromStable(spec, arrangements[focus]) : undefined), [spec, arrangements, focus]);
 
@@ -450,6 +459,23 @@ export function Workbench() {
   };
 
   // Back to the version on screen: the versions after it leave the repository.
+  const create = async () => {
+    if (!creating) return;
+    setBusy(true);
+    setError(null);
+    const id = creating.id.trim();
+    const outcome = await createModel(id, creating.label);
+    setBusy(false);
+    if (!outcome.ok) {
+      setError({ message: outcome.error, issues: outcome.issues });
+      return;
+    }
+    setCreating(null);
+    setRepo(outcome.state);
+    setEdited(null);
+    open(id);
+  };
+
   const restore = async (version: number) => {
     setBusy(true);
     setError(null);
@@ -645,7 +671,57 @@ export function Workbench() {
         style={{ gridTemplateColumns: `${fitted.left}px ${HANDLE}px minmax(0, 1fr) ${HANDLE}px ${fitted.right}px` }}
       >
         <aside className="min-w-0 space-y-4 overflow-y-auto p-3">
-          <Section title="Models">
+          <Section
+            title="Models"
+            action={
+              !creating && (
+                <button
+                  className="rounded-md px-2 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50"
+                  disabled={busy || dirty.length > 0}
+                  title={dirty.length > 0 ? "Save or discard your edits first" : "Add the model of a new DT to the repository"}
+                  onClick={() => setCreating({ id: "", label: "" })}
+                >
+                  New DT
+                </button>
+              )
+            }
+          >
+            {creating && (
+              <div className="space-y-2 rounded-md border p-2">
+                <input
+                  aria-label="Name of the model"
+                  autoFocus
+                  className="h-10 w-full rounded-md border bg-background px-2 text-sm"
+                  placeholder="Model, as in room3"
+                  value={creating.id}
+                  onChange={(event) => setCreating({ ...creating, id: event.target.value })}
+                />
+                <input
+                  aria-label="Name of the DT"
+                  className="h-10 w-full rounded-md border bg-background px-2 text-sm"
+                  placeholder="DT, as in Room 3"
+                  value={creating.label}
+                  onChange={(event) => setCreating({ ...creating, label: event.target.value })}
+                  onKeyDown={(event) => event.key === "Enter" && create()}
+                />
+                {creating.id.trim() && working && modelProblem(working, creating.id.trim()) && (
+                  <p className="text-xs text-red-900">{modelProblem(working, creating.id.trim())}</p>
+                )}
+                <div className="flex gap-2">
+                  <Act
+                    variant="default"
+                    disabled={busy || !creating.id.trim() || !working || modelProblem(working, creating.id.trim()) !== null}
+                    onClick={create}
+                  >
+                    Create version 1
+                  </Act>
+                  <Act variant="ghost" onClick={() => setCreating(null)}>
+                    Cancel
+                  </Act>
+                </div>
+                <p className="text-xs text-muted-foreground">An empty type and an empty instance, for you to fill.</p>
+              </div>
+            )}
             <ul className="space-y-1">
               {models.map((model) => (
                 <li key={model}>
@@ -785,6 +861,10 @@ export function Workbench() {
               onSelect={(id) => {
                 setSelected(id);
                 if (id) setTab("properties");
+              }}
+              onAction={(container) => {
+                setSelected(container);
+                setTab("properties");
               }}
             />
           )}

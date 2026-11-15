@@ -6,15 +6,46 @@
 #   actuator        instances are parts of a device that only act
 #   reaction        instances invoke an operation when a condition on what they observe becomes true
 # What a sensor or an actuator can be asked to do are the operations of its class.
+#
+# The relations between concepts say which references a DT type may state: a
+# reference between two classes is an instance of a relation between their
+# concepts. They are all optional (no lowerBound).
 level: O2
 ePackage: core
 eClasses:
-  Entity: {}
-  Observation: { requiresSource: true }
-  Indicator: { dependent: true }
-  Goal: { dependent: true }
-  Rule: { dependent: true }
+  Entity:
+    eReferences:
+      parts: { eType: Entity, upperBound: -1, containment: true }
+  Observation:
+    requiresSource: true
+    eReferences:
+      source: { eType: Entity }
+      sensor: { eType: Sensor }
+  Indicator:
+    dependent: true
+    eReferences:
+      inputs: { eType: Observation, upperBound: -1 }
+  Goal:
+    dependent: true
+    eReferences:
+      indicator: { eType: Indicator, upperBound: -1 }
+  Rule:
+    dependent: true
+    eReferences:
+      inputs: { eType: Observation, upperBound: -1 }
   Device: { device: true }
-  Sensor: { sensor: true }
-  Actuator: { actuator: true }
-  Reaction: { dependent: true, reaction: true }
+  Sensor:
+    sensor: true
+    eReferences:
+      device: { eType: Device }
+  Actuator:
+    actuator: true
+    eReferences:
+      device: { eType: Device }
+  Reaction:
+    dependent: true
+    reaction: true
+    eReferences:
+      input: { eType: Observation }
+      actuator: { eType: Actuator }
+      sensor: { eType: Sensor }

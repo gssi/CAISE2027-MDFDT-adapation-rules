@@ -66,8 +66,9 @@ function run(
   changeset: ChangeSet,
   evolution: EvolutionProposal | null,
   planner?: AdaptationPlanner,
+  only?: string,
 ): ProcessResult {
-  const drift = classify(head, candidate, changeset, evolution);
+  const drift = classify(head, candidate, changeset, evolution, only);
   const impact = assess(head, candidate, drift);
   const plan = (planner ?? new RuleBasedPlanner()).plan({ head, candidate, changeset, drift, impact });
   return { head, candidate, changeset, drift, impact, plan };
@@ -91,8 +92,10 @@ export function onEdit(
   working: Federation,
   base: number | null = null,
   planner?: AdaptationPlanner,
+  /** When the shared concepts changed: the one model whose vertical drift is wanted. */
+  only?: string,
 ): ProcessResult {
-  return run(head, working, fromEdit(head, working, base), null, planner);
+  return run(head, working, fromEdit(head, working, base), null, planner, only);
 }
 
 /** Run the process on timeliness violations observed at runtime. */

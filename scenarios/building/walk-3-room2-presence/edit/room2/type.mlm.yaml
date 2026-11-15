@@ -1,0 +1,38 @@
+# Walk step 3: a simulated device with a presence sensor feeds the occupancy of Room 2.
+level: O1
+ePackage: room2
+typedBy: core
+eClasses:
+  Presence:
+    instanceOf: Entity
+  Occupancy:
+    instanceOf: Observation
+    eAttributes:
+      occupied:
+        eType: EBoolean
+        meaning: occupancy
+    eReferences:
+      source:
+        eType: Presence
+        lowerBound: 1
+  SimulatedDevice:
+    instanceOf: Device
+    eAttributes:
+      connector:
+        eType: EString
+  PresenceSensor:
+    instanceOf: Sensor
+    eAttributes:
+      kind:
+        eType: EString
+      uid:
+        eType: EString
+      value:
+        eType: EString
+      detected:
+        eType: EBoolean
+        meaning: occupancy
+    eReferences:
+      device:
+        eType: SimulatedDevice
+        lowerBound: 1

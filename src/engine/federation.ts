@@ -128,6 +128,19 @@ export function versions(fed: Federation, pkg: string): number[] {
     .sort((a, b) => a - b);
 }
 
+/**
+ * What a shared concept can say of its instances: the roles the engine knows.
+ * A concept with none of them is an entity, what the others are about.
+ */
+export const CONCEPT_ROLES: Record<string, string> = {
+  requiresSource: "instances need a value source: runtime data or another DT",
+  dependent: "instances are evaluated from other elements",
+  device: "instances are physical devices, reached through a connector",
+  sensor: "instances are sensors on a device: what they sense provides data",
+  actuator: "instances are parts of a device that only act",
+  reaction: "instances invoke an operation when a condition on what they observe becomes true",
+};
+
 /** Properties of an O1 class, inherited from the O2 concept it instantiates. */
 export function classProps(fed: Federation, o1: Model | null, className: string): Dict {
   const eclass = o1?.eClasses[className];

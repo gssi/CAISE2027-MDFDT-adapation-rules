@@ -4,7 +4,7 @@
  * Describing devices and what they sense is in `@/engine/modeling/parts`.
  */
 import { CORRESPONDENCE, REPRESENTATION, findLink, links, resolve, type Federation } from "@/engine/federation";
-import { type Dict } from "@/engine/kernel/model";
+import { type Dict, type EClass } from "@/engine/kernel/model";
 import { pascal, plainAttribute, uniqueName } from "@/engine/modeling/parts";
 import { parseRef, ref } from "@/engine/kernel/refs";
 import { weavingName } from "@/engine/modelset";
@@ -89,9 +89,14 @@ export function attributeElements(fed: Federation, except?: string): string[] {
 
 // -- reactions and the concepts they need ------------------------------------
 
-const CONCEPTS: Record<string, { name: string; properties: Dict }> = {
-  actuator: { name: "Actuator", properties: { actuator: true } },
-  reaction: { name: "Reaction", properties: { dependent: true, reaction: true } },
+/** A concept the shared model may lack, and the roles of the concepts it relates to (by reference name). */
+const CONCEPTS: Record<string, { name: string; properties: Dict; relations: Record<string, string> }> = {
+  actuator: { name: "Actuator", properties: { actuator: true }, relations: { device: "device" } },
+  reaction: {
+    name: "Reaction",
+    properties: { dependent: true, reaction: true },
+    relations: { input: "requiresSource", actuator: "actuator", sensor: "sensor" },
+  },
 };
 
 /** Whether the shared concepts know a kind of element (`actuator`, `reaction`, ...). */
@@ -108,7 +113,14 @@ export function ensureConcept(fed: Federation, flag: string): string | null {
   if (!meta || !concept) return null;
   if (!hasConcept(fed, flag)) {
     const name = uniqueName(Object.keys(meta.eClasses), concept.name);
-    meta.eClasses[name] = { name, instanceOf: null, eAttributes: {}, eReferences: {}, properties: { ...concept.properties } };
+    // Concepts that state relations hold the DT types to them: the new concept states its own.
+    const related = Object.values(meta.eClasses).some((c) => Object.keys(c.eReferences).length > 0);
+    const eReferences: EClass["eReferences"] = {};
+    for (const [relation, role] of Object.entries(related ? concept.relations : {})) {
+      const target = Object.values(meta.eClasses).find((c) => c.properties[role] && !c.properties.reaction);
+      if (target) eReferences[relation] = { name: relation, eType: target.name, lowerBound: 0, upperBound: 1, containment: false };
+    }
+    meta.eClasses[name] = { name, instanceOf: null, eAttributes: {}, eReferences, properties: { ...concept.properties } };
   }
   return meta.name;
 }

@@ -65,9 +65,10 @@ export function headFederation(versions: ModelVersion[]): Federation {
 }
 
 /**
- * Drift that reaches an initiating DT from the models it weaves: they moved on
- * since its current version was committed. The change is the difference between
- * what the model was verified against and what those models are now.
+ * Drift that reaches a model from what it depends on: the models it weaves, and
+ * the shared concepts its type instantiates. They moved on since its current
+ * version was committed. The change is the difference between what the model
+ * was verified against and what those models are now.
  */
 export function incomingDrift(versions: ModelVersion[], focus: string): ProcessResult | null {
   const heads = headsOf(versions);
@@ -75,14 +76,15 @@ export function incomingDrift(versions: ModelVersion[], focus: string): ProcessR
   const context = versions.find((v) => v.model === focus && v.version === heads[focus])?.context ?? {};
   const before = { ...heads };
   let moved = false;
-  for (const woven of wovenBy(head, focus)) {
+  const concepts = head.models[head.models[head.models[focus]?.typedBy ?? ""]?.typedBy ?? ""];
+  for (const woven of [...wovenBy(head, focus), ...(concepts?.level === "O2" ? [concepts.name] : [])]) {
     if (context[woven] !== undefined && context[woven] !== heads[woven]) {
       before[woven] = context[woven];
       moved = true;
     }
   }
   if (!moved) return null;
-  const result = onEdit(assembleAt(versions, before), head, heads[focus]);
+  const result = onEdit(assembleAt(versions, before), head, heads[focus], undefined, focus);
   return result.drift.links.length || result.plan.resolutions.length ? result : null;
 }
 

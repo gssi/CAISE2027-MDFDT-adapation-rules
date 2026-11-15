@@ -25,13 +25,13 @@ import {
   type Federation,
 } from "../federation";
 import { modelKey, repr, type Dict, type EAttribute, type EClass, type Model } from "../kernel/model";
-import { asNextVersion, instanceOfModel, modelOf, versionOf, weavingName } from "../modelset";
+import { asNextVersion, instanceOfModel, modelOf, renamedClasses, versionOf, weavingName } from "../modelset";
 import { ownerOf, parseRef, ref } from "../kernel/refs";
 import { MappingError, findRule, inferType, renameSource } from "../mapping";
 import { HOLDS, MISSING, PENDING, checkCorrespondences } from "../weaving/checks";
 import { linksOfType, wlink, wmodel, type WLink, type WModel } from "../weaving/model";
 import { changeFromDict, changeToDict, diff, type Change, type ChangeSet } from "./change";
-import { HORIZONTAL } from "./drift";
+import { HORIZONTAL, TOP_DOWN, VERTICAL } from "./drift";
 import { EvolutionError, migrateInstance } from "./evolution";
 import { IMPACT } from "./impact";
 
@@ -215,7 +215,13 @@ export function applyOption(candidate: Federation, chosen: Option): Federation {
   }
   const fed = cloneFederation(candidate);
   const params = chosen.params;
-  if (chosen.kind === DERIVE || chosen.kind === ADAPT) {
+  if (chosen.kind === ADAPT && params.instanceOf) {
+    // a class follows its concept under the name the concept has now
+    const target = parseRef(params.element);
+    const eclass = fed.models[target.model]?.eClasses[target.path[0]];
+    if (!eclass) throw new PlanError(`${params.element} is not a class`);
+    eclass.instanceOf = params.instanceOf;
+  } else if (chosen.kind === DERIVE || chosen.kind === ADAPT) {
     retarget(fed, params.correspondence, params.participating, params.mapping ?? "");
   } else if (chosen.kind === CHANGE_REQUEST) {
     let link = params.correspondence ? findLink(fed, params.correspondence) : null;
@@ -355,6 +361,7 @@ export class RuleBasedPlanner implements AdaptationPlanner {
       resolution.options = kept;
       plan.resolutions.push(resolution);
     }
+    plan.resolutions.push(...this.followConcepts(context));
     // A change request that is waiting can be closed as soon as the
     // participating DT models what was asked for.
     for (const link of links(context.candidate, CORRESPONDENCE)) {
@@ -375,6 +382,52 @@ export class RuleBasedPlanner implements AdaptationPlanner {
       plan.resolutions.push(resolution);
     }
     return plan;
+  }
+
+  /**
+   * A class of a DT type whose concept is no longer among the shared concepts.
+   * It belongs to the model of that DT: its modeler gives it a concept again.
+   * A concept that was renamed is followed under its new name.
+   */
+  private followConcepts(context: PlanningContext): Resolution[] {
+    const out: Resolution[] = [];
+    for (const link of linksOfType(context.drift, VERTICAL)) {
+      const lower = parseRef(link.ends.lower);
+      const type = context.candidate.models[lower.model];
+      if (link.props.origin !== TOP_DOWN || type?.level !== "O1" || !lower.path.length) continue;
+      const now = context.candidate.models[type.typedBy ?? ""];
+      const was = context.head.models[type.typedBy ?? ""];
+      const concept = type.eClasses[lower.path[0]]?.instanceOf ?? "";
+      const gone = lower.path.length === 1 && !(concept in (now?.eClasses ?? {}));
+      const renamed = gone && now && was ? renamedClasses(was, now).find(([from]) => from === concept)?.[1] : undefined;
+      const proposal = renamed
+        ? option(ADAPT, `retype ${link.ends.lower} to ${renamed}: the concept ${concept} is now ${renamed}`, {
+            element: link.ends.lower,
+            instanceOf: renamed,
+          })
+        : gone
+          ? option(
+              ADAPT,
+              `give ${link.ends.lower} one of the shared concepts: ${concept || "its concept"} is no longer among them`,
+              { element: link.ends.lower },
+              false,
+            )
+          : option(
+              ADAPT,
+              `revise ${link.ends.lower} to follow the relations between the shared concepts: ${(link.props.reasons ?? []).join("; ")}`,
+              { element: link.ends.lower },
+              false,
+            );
+      this.rank([proposal]);
+      out.push({
+        drift: link.id,
+        owner: modelOf(link.ends.lower),
+        element: link.ends.lower,
+        correspondence: null,
+        options: [proposal],
+      });
+    }
+    return out;
   }
 
   private rank(options: Option[]): void {

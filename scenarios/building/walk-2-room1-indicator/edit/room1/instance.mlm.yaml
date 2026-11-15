@@ -1,0 +1,44 @@
+# Walk step 2: two reactions switch an indicator light on and off.
+level: O0
+name: room1
+dt: Room 1
+objects:
+  presence:
+    instanceOf: Presence
+  occupancy:
+    instanceOf: Occupancy
+    bindings:
+      occupied: detected
+    source: presence
+  simulated_device:
+    instanceOf: SimulatedDevice
+    connector: simulated
+  presence2:
+    instanceOf: PresenceSensor
+    bindings:
+      detected: detected
+    kind: presence
+    device: simulated_device
+    uid: presence
+    value: "true"
+  switch:
+    instanceOf: Switch
+    bindings:
+      on: on
+    kind: switch
+    device: simulated_device
+    uid: indicator
+  occupied_set:
+    instanceOf: OccupiedSet
+    input: occupancy
+    target: switch
+    when: occupied
+    operation: set
+    on: true
+  occupied_set2:
+    instanceOf: OccupiedSet2
+    input: occupancy
+    target: switch
+    when: not occupied
+    operation: set
+    on: false

@@ -3,8 +3,10 @@
 import { useState } from "react";
 
 import {
+  CONCEPT_ROLES,
   CORRESPONDENCE,
   classProps,
+  instances,
   findLink,
   links,
   typeOf,
@@ -22,7 +24,15 @@ import {
 } from "@/engine/kernel/model";
 import { availableKeys, devicesOf, isSensor, providedKeys, type Reading } from "@/engine/devices";
 import { parseRef, ref } from "@/engine/kernel/refs";
-import { nameProblem, renameAttribute, renameClass, renameObject } from "@/engine/modeling/rename";
+import { checkConformance } from "@/engine/conformance";
+import {
+  nameProblem,
+  removeConcept,
+  renameAttribute,
+  renameClass,
+  renameConcept,
+  renameObject,
+} from "@/engine/modeling/rename";
 import { modelOf } from "@/engine/modelset";
 import { type LiveValue } from "@/engine/runtime/live";
 import { type CorrespondenceStatus } from "@/engine/weaving/checks";
@@ -188,6 +198,10 @@ function Overview({ fed, focus, statuses, readOnly, readings, reactions, update,
           )}
         </ul>
       </Section>
+      {!readOnly && type && <AddElement fed={fed} model={type} update={update} onSelect={onSelect} />}
+      {!readOnly && model && model.level !== "O1" && (
+        <AddElement fed={fed} model={model} update={update} onSelect={onSelect} />
+      )}
       {model?.level === "O0" && (
         <DeviceModeling
           fed={fed}
@@ -263,21 +277,27 @@ function onSelectLater(onSelect: (id: string | null) => void, id: string | null)
 
 // -- models ------------------------------------------------------------------
 
-function ModelEditor({ fed, model, readOnly, update, onSelect }: PropertiesProps & { model: Model }) {
+/** A new class in a type, or a new object in an instance: its name and what it is an instance of. */
+function AddElement({ fed, model, update, onSelect }: Pick<PropertiesProps, "fed" | "update" | "onSelect"> & { model: Model }) {
   const key = modelKey(model);
   const type = typeOf(fed, model);
   const meta = fed.models[model.typedBy ?? ""];
   const [name, setName] = useState("");
   const [kind, setKind] = useState("");
+  const concepts = model.level === "O2";
   const options = model.level === "O0" ? Object.keys(type?.eClasses ?? {}) : Object.keys(meta?.eClasses ?? {});
   const chosen = kind || options[0] || "";
 
   const add = () => {
     const wanted = name.trim();
-    if (!wanted || !chosen) return;
+    if (!wanted || (!chosen && !concepts)) return;
     update((f) => {
       const target = f.models[key];
-      if (target.level === "O0") {
+      if (concepts) {
+        const id = uniqueName(Object.keys(target.eClasses), wanted);
+        target.eClasses[id] = { name: id, instanceOf: null, eAttributes: {}, eReferences: {}, properties: {} };
+        onSelectLater(onSelect, ref(key, id));
+      } else if (target.level === "O0") {
         const id = uniqueName(Object.keys(target.objects), wanted);
         target.objects[id] = { name: id, instanceOf: chosen, bindings: {}, slots: {} };
         onSelectLater(onSelect, ref(key, id));
@@ -289,6 +309,43 @@ function ModelEditor({ fed, model, readOnly, update, onSelect }: PropertiesProps
     });
     setName("");
   };
+
+  return (
+    <Section title={concepts ? `Add a concept to ${key}` : model.level === "O0" ? `Add an object to ${key}` : `Add a class to ${key}`}>
+      <div className={`grid items-end gap-2 ${concepts ? "grid-cols-[1fr_auto]" : "grid-cols-[1fr_1fr_auto]"} ${!concepts && options.length === 0 ? "hidden" : ""}`}>
+        <Field label="Name">
+          <input
+            className="h-10 min-w-0 rounded-md border bg-background px-2 text-sm text-foreground"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            onKeyDown={(event) => event.key === "Enter" && add()}
+          />
+        </Field>
+        {!concepts && (
+          <Field label="instanceOf">
+            <Choice value={chosen} options={options} onChange={setKind} />
+          </Field>
+        )}
+        <Act onClick={add} disabled={!name.trim() || (!chosen && !concepts)}>
+          Add
+        </Act>
+      </div>
+      {concepts && (
+        <p className="text-sm text-muted-foreground">
+          A concept is shared by every DT: the classes of their types are its instances.
+        </p>
+      )}
+      {!concepts && options.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          {model.level === "O0" ? "The type of this model has no class yet: add one first." : "There is no concept to instantiate."}
+        </p>
+      )}
+    </Section>
+  );
+}
+
+function ModelEditor({ fed, model, readOnly, update, onSelect }: PropertiesProps & { model: Model }) {
+  const key = modelKey(model);
 
   return (
     <div className="space-y-5">
@@ -317,26 +374,7 @@ function ModelEditor({ fed, model, readOnly, update, onSelect }: PropertiesProps
           Typed by <Code>{model.typedBy}</Code>. Committing the model gives this type its next version.
         </p>
       )}
-      {!readOnly && model.level !== "O2" && (
-        <Section title={model.level === "O0" ? "Add an object" : "Add a class"}>
-          <div className="grid grid-cols-[1fr_1fr_auto] items-end gap-2">
-            <Field label="Name">
-              <input
-                className="h-10 min-w-0 rounded-md border bg-background px-2 text-sm text-foreground"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                onKeyDown={(event) => event.key === "Enter" && add()}
-              />
-            </Field>
-            <Field label="instanceOf">
-              <Choice value={chosen} options={options} onChange={setKind} />
-            </Field>
-            <Act onClick={add} disabled={!name.trim() || !chosen}>
-              Add
-            </Act>
-          </div>
-        </Section>
-      )}
+      {!readOnly && <AddElement fed={fed} model={model} update={update} onSelect={onSelect} />}
       {model.level === "O0" && (
         <Capabilities fed={fed} instance={model.name} readOnly={readOnly} update={update} onSelect={onSelect} />
       )}
@@ -400,17 +438,54 @@ function Capabilities(props: {
 function ClassEditor(props: PropertiesProps & { model: Model; eclass: EClass }) {
   const { fed, model, eclass, update, onSelect } = props;
   const key = modelKey(model);
-  const readOnly = props.readOnly || model.level === "O2";
+  const readOnly = props.readOnly;
   const meta = fed.models[model.typedBy ?? ""];
+  // The classes of the DT types in use that are instances of this concept.
+  const users =
+    model.level === "O2"
+      ? instances(fed).flatMap((instance) => {
+          const type = typeOf(fed, instance);
+          return Object.values(type?.eClasses ?? {})
+            .filter((c) => type?.typedBy === key && c.instanceOf === eclass.name)
+            .map((c) => ref(modelKey(type as Model), c.name));
+        })
+      : [];
   const inherited = classProps(fed, model, eclass.name);
   const edit = (change: (c: EClass) => void) => update((f) => change(f.models[key].eClasses[eclass.name]));
+  // The references of this class that no relation between the shared concepts admits.
+  const unadmitted =
+    model.level === "O1"
+      ? checkConformance(fed).filter((issue) => {
+          const at = parseRef(issue.element);
+          return issue.check === "O1->O2" && at.model === key && at.path[0] === eclass.name && at.path.length === 2;
+        })
+      : [];
+  // What the concept of this class can relate to; null when the concepts state no relation at all.
+  const related = Object.values(meta?.eClasses ?? {}).some((c) => Object.keys(c.eReferences).length > 0);
+  const admitted = related
+    ? Object.values(meta?.eClasses[eclass.instanceOf ?? ""]?.eReferences ?? {}).map(
+        (r) => `${r.eType} (${r.name}${r.containment ? ", made of" : ""}${r.upperBound === -1 ? ", many" : ""})`,
+      )
+    : null;
 
   return (
     <div className="space-y-5">
       <header>
         <h2 className="text-base font-semibold">{eclass.name}</h2>
-        <p className="text-sm text-muted-foreground">Class of {key}</p>
+        <p className="text-sm text-muted-foreground">{model.level === "O2" ? "Concept" : "Class"} of {key}</p>
       </header>
+      {!readOnly && model.level === "O2" && (
+        <Rename
+          key={eclass.name}
+          name={eclass.name}
+          taken={Object.keys(model.eClasses)}
+          note="The types of the DTs are not touched: a DT that uses this concept finds the change as drift, and its modeler follows."
+          onRename={(to) => {
+            update((f) => void renameConcept(f, key, eclass.name, to));
+            onSelect(ref(key, to));
+          }}
+        />
+      )}
       {!readOnly && model.level === "O1" && (
         <Rename
           key={eclass.name}
@@ -452,10 +527,51 @@ function ClassEditor(props: PropertiesProps & { model: Model; eclass: EClass }) 
         </div>
       )}
       {model.level === "O2" && (
-        <p className="text-sm">
-          {Object.entries(eclass.properties).map(([name, value]) => `${name}: ${String(value)}`).join(", ") ||
-            "A generic concept."}
-        </p>
+        <Section title="What its instances are">
+          <ul className="space-y-1.5 text-sm">
+            {Object.entries(CONCEPT_ROLES).map(([flag, meaning]) => (
+              <li key={flag}>
+                <label className="flex min-h-10 items-start gap-2">
+                  <input
+                    type="checkbox"
+                    className="mt-1 size-4 shrink-0"
+                    disabled={readOnly}
+                    checked={Boolean(eclass.properties[flag])}
+                    onChange={(event) =>
+                      edit((c) => {
+                        if (event.target.checked) c.properties[flag] = true;
+                        else delete c.properties[flag];
+                      })
+                    }
+                  />
+                  <span className="min-w-0">
+                    <Code>{flag}</Code> <span className="text-muted-foreground">{meaning}</span>
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+          {!Object.keys(CONCEPT_ROLES).some((flag) => eclass.properties[flag]) && (
+            <p className="text-sm text-muted-foreground">With none of them, an entity: what the other concepts are about.</p>
+          )}
+        </Section>
+      )}
+      {model.level === "O2" && (
+        <Section title="Classes of the DTs that are its instances">
+          {users.length === 0 && <p className="text-sm text-muted-foreground">None: no DT uses this concept.</p>}
+          <ul className="space-y-1 text-sm">
+            {users.map((user) => (
+              <li key={user}>
+                <Code>{user}</Code>
+              </li>
+            ))}
+          </ul>
+          {users.length > 0 && !readOnly && (
+            <p className="text-xs text-muted-foreground">
+              Renaming or deleting the concept puts these DTs in drift, top-down, until their modelers follow.
+            </p>
+          )}
+        </Section>
       )}
       <Section
         title="Attributes"
@@ -530,9 +646,9 @@ function ClassEditor(props: PropertiesProps & { model: Model; eclass: EClass }) 
         ))}
         {Object.keys(eclass.eAttributes).length === 0 && <p className="text-sm text-muted-foreground">None.</p>}
       </Section>
-      {model.level === "O1" && (
+      {model.level !== "O0" && (
         <Section
-          title="References"
+          title={model.level === "O2" ? "Relations to other concepts" : "References"}
           action={
             !readOnly && (
               <Act
@@ -611,6 +727,25 @@ function ClassEditor(props: PropertiesProps & { model: Model; eclass: EClass }) 
             </div>
           ))}
           {Object.keys(eclass.eReferences).length === 0 && <p className="text-sm text-muted-foreground">None.</p>}
+          {unadmitted.map((issue) => (
+            <p key={issue.element} className="text-sm text-red-900">
+              <Code>{parseRef(issue.element).path[1]}</Code> {issue.message}.
+            </p>
+          ))}
+          {model.level === "O2" && (
+            <p className="text-xs text-muted-foreground">
+              A reference between two classes of a DT type is an instance of a relation between their concepts: it is
+              admitted only when such a relation exists, of the same kind and within its multiplicity. A relation
+              with a minimum of 1 is required of every class of this concept.
+            </p>
+          )}
+          {model.level === "O1" && admitted !== null && (
+            <p className="text-xs text-muted-foreground">
+              {admitted.length
+                ? `By the shared concepts, the concept ${eclass.instanceOf} can relate to: ${admitted.join(", ")}.`
+                : `The shared concepts state no relation for the concept ${eclass.instanceOf}: this class can have no reference.`}
+            </p>
+          )}
         </Section>
       )}
       {Object.keys(eclass.eOperations ?? {}).length > 0 && (
@@ -653,11 +788,14 @@ function ClassEditor(props: PropertiesProps & { model: Model; eclass: EClass }) 
         <Act
           variant="destructive"
           onClick={() => {
-            update((f) => void delete f.models[key].eClasses[eclass.name]);
+            update((f) => {
+              if (f.models[key].level === "O2") removeConcept(f, key, eclass.name);
+              else delete f.models[key].eClasses[eclass.name];
+            });
             onSelect(key);
           }}
         >
-          Delete class
+          {model.level === "O2" ? "Delete concept" : "Delete class"}
         </Act>
       )}
     </div>
@@ -686,7 +824,7 @@ function ObjectEditor(props: PropertiesProps & { model: Model; obj: EObject }) {
   const others = Object.values(fed.models).filter((m) => m.level === "O0" && m.name !== model.name);
   // An entity: what the other concepts are about, with no role of its own in the model.
   const role = classProps(fed, type, obj.instanceOf);
-  const plainEntity = !["requiresSource", "dependent", "device", "sensor", "actuator", "reaction"].some((flag) => role[flag]);
+  const plainEntity = !Object.keys(CONCEPT_ROLES).some((flag) => role[flag]);
   const twin = representationOf(fed, ref(model.name, obj.name));
 
   return (

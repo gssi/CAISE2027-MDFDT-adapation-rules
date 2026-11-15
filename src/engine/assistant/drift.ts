@@ -64,14 +64,30 @@ function bottomUp(head: Federation, changeset: ChangeSet, evolved: boolean): WLi
  * instance still conforms to an earlier version, holds something the type no
  * longer admits, or lacks something the type requires.
  */
-function topDown(candidate: Federation, changeset: ChangeSet, unprovided: string[]): WLink[] {
+function topDown(candidate: Federation, changeset: ChangeSet, unprovided: string[], only?: string): WLink[] {
   const origin = candidate.models[changeset.origin ?? ""];
+  const fromConcepts = changeset.originLevel === "O2";
   const conformance = checkConformance(candidate);
   const out: WLink[] = [];
   for (const instance of instances(candidate)) {
     const o1 = typeOf(candidate, instance);
     if (o1 === null || (origin && origin.level === "O1" && o1.name !== origin.name)) continue;
+    if (fromConcepts && only !== undefined && instance.name !== only) continue;
     const dt = dtLabel(candidate, instance.name);
+    // what the type holds, checked against the concepts as they are now
+    for (const issue of fromConcepts ? conformance : []) {
+      const parsed = parseRef(issue.element);
+      // a class without its concept, or a reference no relation between concepts admits
+      if (issue.check !== "O1->O2" || parsed.model !== modelKey(o1) || !parsed.path.length) continue;
+      const concept = o1.eClasses[parsed.path[0]]?.instanceOf;
+      out.push(
+        wlink("", VERTICAL, { upper: concept ? ref(o1.typedBy as string, concept) : (o1.typedBy as string), lower: issue.element }, {
+          origin: TOP_DOWN,
+          dt,
+          reasons: [issue.message],
+        }),
+      );
+    }
     const latest = Math.max(...versions(candidate, o1.name));
     if ((o1.version as number) < latest) {
       const newer = `${o1.name}@${latest}`;
@@ -121,6 +137,8 @@ export function classify(
   candidate: Federation,
   changeset: ChangeSet,
   evolution: EvolutionProposal | null = null,
+  /** When the change comes from the shared concepts: the one model whose vertical drift is wanted. */
+  only?: string,
 ): WModel {
   const statuses = checkCorrespondences(candidate);
   let drifted = statuses.filter((s) => s.status !== HOLDS && s.status !== PENDING);
@@ -130,7 +148,7 @@ export function classify(
   if (changeset.trigger === RUNTIME && changeset.changes.length) {
     vertical = bottomUp(head, changeset, evolution !== null);
   } else if (changeset.trigger === EDIT && ["O1", "O2"].includes(changeset.originLevel ?? "")) {
-    vertical = topDown(candidate, changeset, drifted.map((s) => s.initiating));
+    vertical = topDown(candidate, changeset, drifted.map((s) => s.initiating), only);
   } else if (changeset.trigger === TIMELINESS) {
     drifted = [];
     for (const change of changeset.changes) {

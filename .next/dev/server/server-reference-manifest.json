@@ -1,0 +1,116 @@
+{
+  "node": {
+    "6041aace9b98b890437485808c1a5c4da9eb2c0919": {
+      "workers": {
+        "app/page": {
+          "moduleId": "[project]/.next-internal/server/app/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/server/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false
+        }
+      },
+      "filename": "src/server/actions.ts",
+      "exportedName": "restoreVersion"
+    },
+    "7877d470e09f02d5dad37d8d82688c1cf65525b048": {
+      "workers": {
+        "app/page": {
+          "moduleId": "[project]/.next-internal/server/app/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/server/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false
+        }
+      },
+      "filename": "src/server/actions.ts",
+      "exportedName": "invoke"
+    },
+    "60b601fda8966d1e43b4f0da1bc13b4daf780427ef": {
+      "workers": {
+        "app/page": {
+          "moduleId": "[project]/.next-internal/server/app/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/server/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false
+        }
+      },
+      "filename": "src/server/actions.ts",
+      "exportedName": "initRepository"
+    },
+    "60e5436603b41702764da7bb06985ce73cabc4d21f": {
+      "workers": {
+        "app/page": {
+          "moduleId": "[project]/.next-internal/server/app/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/server/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false
+        }
+      },
+      "filename": "src/server/actions.ts",
+      "exportedName": "getVersion"
+    },
+    "0091cdb289581606c9cd89b8898badab7e57cdd19e": {
+      "workers": {
+        "app/page": {
+          "moduleId": "[project]/.next-internal/server/app/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/server/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false
+        }
+      },
+      "filename": "src/server/actions.ts",
+      "exportedName": "getState"
+    },
+    "004984ea75aee3c2624b16e73654c431e605d4ae00": {
+      "workers": {
+        "app/page": {
+          "moduleId": "[project]/.next-internal/server/app/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/server/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false
+        }
+      },
+      "filename": "src/server/actions.ts",
+      "exportedName": "getExamples"
+    },
+    "60f2b63efaf2904547efc4e791530b8c1740c860ce": {
+      "workers": {
+        "app/page": {
+          "moduleId": "[project]/.next-internal/server/app/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/server/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false
+        }
+      },
+      "filename": "src/server/actions.ts",
+      "exportedName": "createModel"
+    },
+    "70a7bd85790da1911c051bb9adead5fc614db4e96b": {
+      "workers": {
+        "app/page": {
+          "moduleId": "[project]/.next-internal/server/app/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/server/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false
+        }
+      },
+      "filename": "src/server/actions.ts",
+      "exportedName": "decide"
+    },
+    "00bb35c320a4a5476efd556c7a160c4c857bd8b1ba": {
+      "workers": {
+        "app/page": {
+          "moduleId": "[project]/.next-internal/server/app/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/server/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false
+        }
+      },
+      "filename": "src/server/actions.ts",
+      "exportedName": "archiveLegacy"
+    },
+    "40a22edda2f2d8fd6cde2f10f9beb879fdb6474d72": {
+      "workers": {
+        "app/page": {
+          "moduleId": "[project]/.next-internal/server/app/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/server/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false
+        }
+      },
+      "filename": "src/server/actions.ts",
+      "exportedName": "readDevices"
+    },
+    "4088ba51c3b81d5be97231e7d436759a112df7ae0b": {
+      "workers": {
+        "app/page": {
+          "moduleId": "[project]/.next-internal/server/app/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/server/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false
+        }
+      },
+      "filename": "src/server/actions.ts",
+      "exportedName": "discoverSensors"
+    }
+  },
+  "edge": {},
+  "encryptionKey": "irJHYkG31rgsBXgXu7/C6D7mBtCDAqunWWWI3IxEnlA="
+}

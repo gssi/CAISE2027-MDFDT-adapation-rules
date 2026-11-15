@@ -53,6 +53,37 @@ export function renameClass(fed: Federation, model: string, from: string, to: st
   return null;
 }
 
+/**
+ * Rename a shared concept; null when done, else why not. The types of the DTs
+ * that instantiate it are not touched: they are models of their own, and their
+ * modelers follow, each with a version of their model.
+ */
+export function renameConcept(fed: Federation, concepts: string, from: string, to: string): string | null {
+  const model: Model | undefined = fed.models[concepts];
+  if (!model || model.level !== "O2" || !(from in model.eClasses)) return `unknown concept ${from}`;
+  if (from === to) return null;
+  const problem = nameProblem(Object.keys(model.eClasses), to);
+  if (problem) return problem;
+  model.eClasses = renameKey(model.eClasses, from, to);
+  model.eClasses[to].name = to;
+  for (const concept of Object.values(model.eClasses)) {
+    for (const relation of Object.values(concept.eReferences)) if (relation.eType === from) relation.eType = to;
+  }
+  return null;
+}
+
+/** Remove a shared concept, with the relations of the other concepts that lead to it. */
+export function removeConcept(fed: Federation, concepts: string, name: string): void {
+  const model: Model | undefined = fed.models[concepts];
+  if (!model || model.level !== "O2") return;
+  delete model.eClasses[name];
+  for (const concept of Object.values(model.eClasses)) {
+    for (const relation of Object.values(concept.eReferences)) {
+      if (relation.eType === name) delete concept.eReferences[relation.name];
+    }
+  }
+}
+
 /** Rename an object of `model`; null when done, else why not. */
 export function renameObject(fed: Federation, model: string, from: string, to: string): string | null {
   const instance: Model | undefined = fed.models[model];

@@ -264,7 +264,7 @@ export function layout(spec: GraphSpec, options: LayoutOptions = {}): Layout {
       arranged.get(container.id) ??
       wrap(nodesOf.get(container.id) ?? [], (n) => sizes.get(n.id)!.w, gapAfter, room - 2 * PAD);
     nodeRows.set(container.id, rows);
-    const title = measure(container.title, true) + measure(container.subtitle ?? "") + 30;
+    const title = measure(container.title, true) + measure(container.subtitle ?? "") + (container.action ? 48 : 30);
     containerWidth.set(container.id, Math.round(Math.max(2 * PAD + Math.max(...rows.map(rowWidth)), title, 120)));
   };
   // What belongs to other models stands in a band at the side, one below the
@@ -523,7 +523,8 @@ export function layout(spec: GraphSpec, options: LayoutOptions = {}): Layout {
     const end = plan[which];
     const side = which === "from" ? plan.fromSide : plan.toSide;
     const key = which === "to" && plan.connector !== plan.edge.id ? plan.connector : plan.edge.id;
-    return `${end}|${side}|${key}`;
+    // A relation of an element with itself leaves and comes back on the same side: two points, a loop.
+    return `${end}|${side}|${key}${plan.from === plan.to ? `>${which}` : ""}`;
   };
   const assignPorts = () => {
     const sides = new Map<string, { key: string; other: number }[]>();
@@ -737,7 +738,9 @@ export function layout(spec: GraphSpec, options: LayoutOptions = {}): Layout {
           const lineY = trackY(gap, last ? plan.connector : plan.edge.id);
           points.push([from, lineY], [to, lineY]);
         });
-        points.push([xs[xs.length - 1], sideY(b, plan.toSide)]);
+        // A jog too short to draw was left out: the line goes on straight, to the same x.
+        const [endX, lastX] = [xs[xs.length - 1], points[points.length - 1][0]];
+        points.push([Math.abs(endX - lastX) < 0.5 ? lastX : endX, sideY(b, plan.toSide)]);
       }
       const arrow = !arrowed.has(plan.connector);
       arrowed.add(plan.connector);

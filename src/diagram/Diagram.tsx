@@ -134,6 +134,8 @@ export interface DiagramProps {
    * container, and a container of the band at the side to another row of its lane.
    */
   onArrange?: (manual: Manual) => void;
+  /** Called by the button in the title of a container that has an `action`. */
+  onAction?: (container: string) => void;
 }
 
 /** A shape being moved: a node among the nodes of its container, or a container of the band. */
@@ -155,7 +157,7 @@ const BAR_INSET = 8;
 /** A pointer has to travel this far, in pixels, before a press on a node becomes a move. */
 const MOVE_AFTER = 5;
 
-export function Diagram({ spec, selected, onSelect, arranged, onArrange }: DiagramProps) {
+export function Diagram({ spec, selected, onSelect, arranged, onArrange, onAction }: DiagramProps) {
   const by = arranged ?? NO_MANUAL;
   const host = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ width: number; height: number } | null>(null);
@@ -453,6 +455,28 @@ export function Diagram({ spec, selected, onSelect, arranged, onArrange }: Diagr
                         )}
                       </text>
                     </g>
+                    {container.action && onAction && (
+                      <g
+                        className="container-action"
+                        role="button"
+                        aria-label={`${container.action} to ${container.id}`}
+                        style={{ cursor: "pointer" }}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onAction(container.id);
+                        }}
+                      >
+                        <title>{container.action}</title>
+                        <rect x={r.x + r.w - 23} y={r.y + 4} width={17} height={17} rx={4} fill="white" stroke={color} strokeWidth={1} />
+                        <path
+                          d={`M ${r.x + r.w - 18.5} ${r.y + 12.5} h 8 M ${r.x + r.w - 14.5} ${r.y + 8.5} v 8`}
+                          stroke={color}
+                          strokeWidth={1.5}
+                          strokeLinecap="round"
+                        />
+                      </g>
+                    )}
                   </g>
                 );
               })}
@@ -568,7 +592,7 @@ export function Diagram({ spec, selected, onSelect, arranged, onArrange }: Diagr
           </svg>
         )}
       </div>
-      {nodeById.size === 0 && (
+      {nodeById.size === 0 && spec.containers.length === 0 && (
         <p className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">Nothing to show.</p>
       )}
     </div>

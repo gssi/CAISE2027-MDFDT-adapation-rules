@@ -371,3 +371,31 @@ describe("a diagram fitted under the buttons laid over its corner", () => {
     }
   });
 });
+
+describe("the shared concepts, with a relation of a concept with itself", () => {
+  const drawn = layout(focusGraph(baseline(), "core"), { width: 900 });
+
+  it("draws the relation as a loop out of the concept and back into it", () => {
+    const loop = drawn.edges.find((edge) => edge.id === "reference:core#Entity.parts")!;
+    const entity = drawn.nodes["core#Entity"];
+    expect(loop.points.length).toBe(4);
+    for (const [x, y] of [loop.points[0], loop.points[3]]) {
+      expect(y).toBe(entity.y + entity.h);
+      expect(x).toBeGreaterThan(entity.x);
+      expect(x).toBeLessThan(entity.x + entity.w);
+    }
+    expect(loop.points[1][1]).toBeGreaterThan(entity.y + entity.h);
+  });
+
+  it("keeps every connector orthogonal, with at least two points, and clear of the nodes", () => {
+    for (const edge of drawn.edges) {
+      expect(edge.points.length).toBeGreaterThanOrEqual(2);
+      for (let i = 1; i < edge.points.length; i++) {
+        const [a, b] = [edge.points[i - 1], edge.points[i]];
+        expect(a[0] === b[0] || a[1] === b[1]).toBe(true);
+      }
+    }
+    expect(overlappingNodes(drawn)).toEqual([]);
+    expect(edgesThroughNodes(drawn)).toEqual([]);
+  });
+});

@@ -11,6 +11,7 @@ The first part of this document describes how the two work. The second part play
 - [evolution.ts](#evolutionts)
 - [adaptation.ts](#adaptationts)
 - [Paper scenarios](#paper-scenarios): A0, A1, A2, the variant `room2-hidden-count`, timeliness
+- [The walk on simulated devices](#the-walk-on-simulated-devices): steps 1 to 6, to induce a drift and resolve it
 - [How the screenshots were taken](#how-the-screenshots-were-taken)
 
 ## Where the two files sit in the process
@@ -74,6 +75,7 @@ An `AdaptationPlan` has one `Resolution` per drifted correspondence (`drift`, `o
 | `derive` | re-targets and writes a `mapping` in the correspondence | the meanings differ and `core` admits a derivation between them whose result has the expected type |
 | `adapt` · *needs the modeler* | nothing: `applyOption` refuses it | always, for a broken correspondence: the initiating DT consumes the new element itself, with a new type version and its dependents revised |
 | `change_request` | marks the correspondence `pending`, with the request and the interim behaviours | no automatic option is left |
+| `adapt` on a class | sets the `instanceOf` of a class of a DT type to the name its concept has now | a shared concept was renamed while the class instantiates it (vertical drift, top-down); when the concept was deleted the option *needs the modeler* |
 
 Re-targeting (`retarget`) sets the participating end, rewrites what the correspondence expects (type version, type, unit, meaning) from the new element, sets or removes the mapping and clears `status`, `changeRequest` and `interim`.
 
@@ -106,6 +108,9 @@ After that, every correspondence that is already `pending` is tried again with `
 | A2 · Building | – | `provide` finds nothing → `change_request` |
 | A2 · variant | `migrateInstance` | `proposeForRequest`; `provide` on the pending request → `adapt` |
 | Timeliness | – | `deriveBroken` finds no successor → `change_request` |
+| Walk 4, 5a | `proposeEvolution` (4 with parts) | `deriveBroken` → `derive`, `adapt` (modeler) |
+| Walk 4a, 4b, 5b | – | from the room: `change_request` (no successor: the element is still there) |
+| Walk 6 | – | `deriveBroken` → `derive` on the same element, `applyOption(derive)` twice |
 
 ---
 
@@ -234,12 +239,23 @@ Played after the variant. `c-r2-occupancy` and `c-r2-count` expect observations 
 
 ---
 
+## The walk on simulated devices
+
+A walk from version 1 of every model to a federation that has drifted and been brought back, one decision at a time, on simulated devices: no hardware is needed. The rooms change how they sense (no drift), Room 1 changes what it offers, from the data (vertical drift, bottom-up) and from the type (vertical drift, top-down), then is consistent again and leaves Building in horizontal drift; Room 2 follows; Building resolves both correspondences with a derivation.
+
+Every step, with what to click, what the app answers and why, is in **[walk.md](walk.md)**, with a screenshot per step. Its edits and reports are in [`scenarios/building`](../scenarios/building) (`walk-*`), and the whole walk is the acceptance test [`tests/walk.test.ts`](../tests/walk.test.ts).
+
+![The walk, step 4a: vertical drift, top-down](img/walk/4a-room1-type.png)
+
+---
+
 ## How the screenshots were taken
 
-On 2026-11-14, at commit `748fa19`, by driving the modeler in a headless browser against two fresh model repositories (`FMDDT_REPO` set to an empty folder, then *Start from building*):
+On 2026-11-15, by driving the modeler in a headless browser against three fresh model repositories (`FMDDT_REPO` set to an empty folder, then *Start from building*):
 
 1. the scenario as shipped: A0, A1, A2;
 2. the variant `room2-hidden-count`: A1 and A2 again, then Room 2, the binding and timeliness;
+3. the walk on simulated devices, steps 1 to 6.
 
 Wide images are the whole window; narrow ones are the tab on the right alone, at its full height and with the *Elements* of the change set unfolded. The path of the repository in the top bar is hidden. Nothing else was altered.
 

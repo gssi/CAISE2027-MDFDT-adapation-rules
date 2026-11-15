@@ -64,6 +64,8 @@ export interface GContainer {
   mark?: Mark;
   /** Stands for another model: only what a weaving link touches is shown. */
   proxy?: boolean;
+  /** What a button in the title adds to the container ("Add a class"); none without it. */
+  action?: string;
 }
 
 export interface GRow {

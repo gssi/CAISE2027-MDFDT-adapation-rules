@@ -1,0 +1,11 @@
+# Walk step 5a: Room 2 now reports a people count, and no longer whether someone is detected.
+source: room2
+capabilities:
+  count:
+    eType: EInt
+    unit: person
+    meaning: people-count
+observations:
+  - key: count
+    value: 3
+    timestamp: 100

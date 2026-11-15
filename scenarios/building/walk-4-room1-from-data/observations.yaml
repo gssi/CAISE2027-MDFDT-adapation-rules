@@ -1,0 +1,36 @@
+# Walk step 4, from the data: the presence sensor of Room 1 no longer answers, and a people
+# counter is attached. What *Read and look at what is attached* would send.
+source: room1
+capabilities:
+  occupied:
+    eType: EBoolean
+    meaning: occupancy
+  on:
+    eType: EBoolean
+    meaning: switch-state
+  count:
+    eType: EInt
+    unit: person
+    meaning: people-count
+    part:
+      device: simulated_device
+      uid: people_counter
+      kind:
+        kind: people_counter
+        label: People counter
+        settings:
+          - name: uid
+            eType: EString
+            description: What tells this part from the others of its device.
+          - name: value
+            eType: EString
+            description: The value to report; empty for a default one. Write `fail` to behave like a sensor that
+              is gone.
+        parameters:
+          - name: count
+            eType: EInt
+            unit: person
+            meaning: people-count
+            description: How many people are there.
+      parameter: count
+observations: []
